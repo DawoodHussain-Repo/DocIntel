@@ -1,20 +1,16 @@
-import os
+"""PDF ingestion pipeline with heading-aware chunking."""
 import hashlib
 import chromadb
 from typing import List, Dict
 from unstructured.partition.pdf import partition_pdf
 from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
-
-load_dotenv()
+from backend.config import config
 
 # Initialize embedding model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Initialize ChromaDB client
-chroma_client = chromadb.PersistentClient(
-    path=os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-)
+chroma_client = chromadb.PersistentClient(path=config.CHROMA_PERSIST_DIR)
 
 def chunk_by_headings(elements, source_file: str) -> List[Dict]:
     """Chunk document using heading-aware strategy."""

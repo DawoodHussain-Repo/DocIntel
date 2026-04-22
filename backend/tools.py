@@ -1,24 +1,25 @@
-import os
+"""ChromaDB tools for legal document search."""
 import chromadb
 from langchain.tools import tool
-from dotenv import load_dotenv
-
-load_dotenv()
+from backend.config import config
 
 # Initialize ChromaDB client
-chroma_client = chromadb.PersistentClient(
-    path=os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-)
+chroma_client = chromadb.PersistentClient(path=config.CHROMA_PERSIST_DIR)
+
 
 @tool
 def search_legal_clauses(query: str) -> str:
     """Search for relevant legal clauses in indexed documents.
     
+    Returns the top 3 most similar chunks with page numbers and headings.
+    If no results are found, returns a message stating so.
+    Never raises exceptions — returns error description as string on failure.
+    
     Args:
         query: The search query to find relevant contract clauses
         
     Returns:
-        Formatted string with top 3 most relevant clauses
+        Formatted string with top 3 most relevant clauses or error message
     """
     try:
         collection = chroma_client.get_collection("legal_docs")
@@ -43,4 +44,4 @@ def search_legal_clauses(query: str) -> str:
         return "\n\n".join(formatted_output)
     
     except Exception as e:
-        return f"Error searching documents: {str(e)}"
+        return f"Search failed: {e}. Please try a different query."

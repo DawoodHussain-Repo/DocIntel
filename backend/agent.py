@@ -1,51 +1,56 @@
+"""LangGraph agent implementation with tools and checkpointer."""
 import os
 from typing import TypedDict, Annotated
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from backend.tools import search_legal_clauses
-from dotenv import load_dotenv
+from backend.prompts import SYSTEM_PROMPT
+from backend.config import config
 
-load_dotenv()
-
-# System prompt
-SYSTEM_PROMPT = """You are DocIntel, an AI assistant specialized in analyzing legal contracts.
-Rules you MUST follow:
-- You ONLY use information returned by the search_legal_clauses tool. Never use prior knowledge.
-- Every factual claim must reference the clause it came from. Append [Page X] to each cited sentence.
-- If the user asks about something not present in the document, respond: 'This clause is not present in the document.'
-- Do not guess, infer, or hallucinate contract terms."""
 
 class AgentState(TypedDict):
+    """State schema for the agent graph."""
     messages: Annotated[list, add_messages]
 
+
 def get_llm():
-    """Initialize LLM based on provider selection."""
-    provider = os.getenv("LLM_PROVIDER", "groq").lower()
+    """Initialize LLM based on provider selection from config.
     
-    if provider == "groq":
+    Returns:
+        ChatOpenAI: Configured LLM instance
+        
+    Raises:
+        ValueError: If LLM_PROVIDER is invalid
+    """
+    if config.LLM_PROVIDER == "groq":
         return ChatOpenAI(
-            model=os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile"),
-            api_key=os.getenv("GROQ_API_KEY"),
-            base_url="https://api.groq.com/openai/v1",
+            model=config.GROQ_MODEL,
+            api_key=config.GROQ_API_KEY,
+            base_url=config.GROQ_BASE_URL,
             streaming=True,
             temperature=0.7
         )
-    elif provider == "lmstudio":
+    elif config.LLM_PROVIDER == "lmstudio":
         return ChatOpenAI(
-            model=os.getenv("LMSTUDIO_MODEL", "local-model"),
-            api_key="lm-studio",  # LM Studio accepts any string
-            base_url=os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1"),
+            model=config.LMSTUDIO_MODEL,
+            api_key=config.LMSTUDIO_API_KEY,
+            base_url=config.LMSTUDIO_BASE_URL,
             streaming=True,
             temperature=0.7
         )
     else:
-        raise ValueError(f"Unknown LLM_PROVIDER: {provider}. Use 'groq' or 'lmstudio'")
+        raise ValueError(f"Unknown LLM_PROVIDER: {config.LLM_PROVIDER}. Use 'groq' or 'lmstudio'")
+
 
 async def create_agent():
-    """Create the LangGraph agent with tools and checkpointer."""
+    """Create the LangGraph agent with tools and checkpointer.
+    
+    Returns:
+        Compiled LangGraph application with persistence
+    """
     from backend.checkpointer import get_checkpointer
     
     # Initialize LLM based on provider
@@ -57,6 +62,7 @@ async def create_agent():
     
     # Define agent node
     def call_model(state: AgentState):
+        """Agent node that calls the LLM with tools."""
         messages = state["messages"]
         
         # Inject system prompt if not present
@@ -68,6 +74,7 @@ async def create_agent():
     
     # Define routing logic
     def should_continue(state: AgentState):
+        """Determine if we should continue to tools or end."""
         last_message = state["messages"][-1]
         
         # If there are tool calls, continue to tools

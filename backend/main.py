@@ -1,3 +1,4 @@
+"""FastAPI application with PDF upload and SSE streaming endpoints."""
 import os
 import uuid
 import aiofiles
@@ -7,18 +8,18 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from backend.ingestion import process_pdf
 from backend.agent import create_agent
-from dotenv import load_dotenv
+from backend.config import config
 import json
-import asyncio
 
-load_dotenv()
+# Validate configuration on startup
+config.validate()
 
 app = FastAPI(title="DocIntel API")
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
+    allow_origins=[config.FRONTEND_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,23 +30,37 @@ agent = None
 
 @app.on_event("startup")
 async def startup_event():
+    """Initialize agent on application startup."""
     global agent
     agent = await create_agent()
 
 @app.post("/api/upload_contract")
 async def upload_contract(file: UploadFile = File(...)):
-    """Upload and process a PDF contract."""
+    """Upload and process a PDF contract.
+    
+    Args:
+        file: PDF file to process
+        
+    Returns:
+        JSON with status, filename, chunks indexed, and collection name
+        
+    Raises:
+        HTTPException: 400 if not PDF, 413 if too large, 500 on processing error
+    """
     
     # Validate file type
-    if file.content_type != "application/pdf":
+    if file.content_type not in config.ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
     # Read file content
     content = await file.read()
     
-    # Check file size (20MB limit)
-    if len(content) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File size exceeds 20MB limit")
+    # Check file size
+    if len(content) > config.MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=413, 
+            detail=f"File size exceeds {config.MAX_FILE_SIZE_MB}MB limit"
+        )
     
     # Save to temp file with UUID
     temp_filename = f"{uuid.uuid4()}.pdf"
@@ -73,7 +88,18 @@ async def chat_stream(
     query: str = Query(...),
     thread_id: str = Query(...)
 ):
-    """Stream chat responses using SSE."""
+    """Stream chat responses using SSE.
+    
+    Args:
+        query: User query string
+        thread_id: UUID for conversation thread
+        
+    Returns:
+        StreamingResponse with SSE events
+        
+    Raises:
+        HTTPException: 400 if thread_id is invalid UUID
+    """
     
     # Validate thread_id is a valid UUID
     try:
@@ -82,9 +108,10 @@ async def chat_stream(
         raise HTTPException(status_code=400, detail="Invalid thread_id format")
     
     async def event_generator():
+        """Generate SSE events from agent stream."""
         try:
             # Create config with thread_id
-            config = {
+            config_dict = {
                 "configurable": {"thread_id": thread_id}
             }
             
@@ -92,7 +119,7 @@ async def chat_stream(
             input_message = {"messages": [HumanMessage(content=query)]}
             
             # Stream events
-            async for event in agent.astream_events(input_message, config, version="v1"):
+            async for event in agent.astream_events(input_message, config_dict, version="v1"):
                 event_type = event.get("event")
                 
                 # Tool call event
@@ -134,5 +161,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("BACKEND_PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=config.BACKEND_PORT)

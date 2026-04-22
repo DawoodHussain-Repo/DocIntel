@@ -1,12 +1,14 @@
-import os
+"""Conversation persistence using AsyncSqliteSaver."""
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from dotenv import load_dotenv
+from backend.config import config
 
-load_dotenv()
 
 async def get_checkpointer():
-    """Initialize and return AsyncSqliteSaver for conversation persistence."""
-    db_path = os.getenv("SQLITE_DB_PATH", "./docintel_memory.db")
-    checkpointer = AsyncSqliteSaver.from_conn_string(db_path)
+    """Initialize and return AsyncSqliteSaver for conversation persistence.
+    
+    Returns:
+        AsyncSqliteSaver: Configured checkpointer instance
+    """
+    checkpointer = AsyncSqliteSaver.from_conn_string(config.SQLITE_DB_PATH)
     await checkpointer.setup()
     return checkpointer
