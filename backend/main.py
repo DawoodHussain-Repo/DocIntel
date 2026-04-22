@@ -24,8 +24,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize agent
-agent = create_agent()
+# Initialize agent on startup
+agent = None
+
+@app.on_event("startup")
+async def startup_event():
+    global agent
+    agent = await create_agent()
 
 @app.post("/api/upload_contract")
 async def upload_contract(file: UploadFile = File(...)):

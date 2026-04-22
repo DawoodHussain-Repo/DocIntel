@@ -6,7 +6,6 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from backend.tools import search_legal_clauses
-from backend.checkpointer import get_checkpointer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -45,8 +44,9 @@ def get_llm():
     else:
         raise ValueError(f"Unknown LLM_PROVIDER: {provider}. Use 'groq' or 'lmstudio'")
 
-def create_agent():
+async def create_agent():
     """Create the LangGraph agent with tools and checkpointer."""
+    from backend.checkpointer import get_checkpointer
     
     # Initialize LLM based on provider
     llm = get_llm()
@@ -99,7 +99,7 @@ def create_agent():
     workflow.add_edge("tools", "agent")
     
     # Compile with checkpointer
-    checkpointer = get_checkpointer()
+    checkpointer = await get_checkpointer()
     app = workflow.compile(checkpointer=checkpointer)
     
     return app
