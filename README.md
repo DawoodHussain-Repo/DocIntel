@@ -34,8 +34,16 @@ An AI-powered legal document analysis system built with LangGraph, FastAPI, and 
 ### Backend Setup
 
 1. **Install Python dependencies**:
-   ```bash
-   pip install -r requirements.txt
+   ```powershell
+   cd backend
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+   pip install -r ..\requirements.txt
+   ```
+
+   Or use the automated setup script:
+   ```powershell
+   .\setup.ps1
    ```
 
 2. **Configure environment**:
@@ -62,9 +70,15 @@ An AI-powered legal document analysis system built with LangGraph, FastAPI, and 
    Note: Make sure LM Studio is running with a model loaded before using `lmstudio` provider.
 
 3. **Run the backend**:
-   ```bash
+   ```powershell
    cd backend
+   .\venv\Scripts\Activate.ps1
    python main.py
+   ```
+   
+   Or use the start script:
+   ```powershell
+   .\start-backend.ps1
    ```
    
    Backend will start on `http://localhost:8000`
@@ -78,8 +92,13 @@ An AI-powered legal document analysis system built with LangGraph, FastAPI, and 
    ```
 
 2. **Run the development server**:
-   ```bash
+   ```powershell
    npm run dev
+   ```
+   
+   Or use the start script from root:
+   ```powershell
+   .\start-frontend.ps1
    ```
    
    Frontend will start on `http://localhost:3000`
