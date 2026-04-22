@@ -1,6 +1,6 @@
 """Conversation persistence using AsyncSqliteSaver."""
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from backend.config import config
+from config import config
 
 
 async def get_checkpointer():

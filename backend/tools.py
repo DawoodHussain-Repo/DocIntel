@@ -1,7 +1,7 @@
 """ChromaDB tools for legal document search."""
 import chromadb
 from langchain.tools import tool
-from backend.config import config
+from config import config
 
 # Initialize ChromaDB client
 chroma_client = chromadb.PersistentClient(path=config.CHROMA_PERSIST_DIR)

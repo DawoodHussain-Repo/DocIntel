@@ -4,7 +4,7 @@ import chromadb
 from typing import List, Dict
 from unstructured.partition.pdf import partition_pdf
 from sentence_transformers import SentenceTransformer
-from backend.config import config
+from config import config
 
 # Initialize embedding model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")

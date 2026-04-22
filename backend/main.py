@@ -1,14 +1,20 @@
 """FastAPI application with PDF upload and SSE streaming endpoints."""
 import os
+import sys
 import uuid
 import aiofiles
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
-from backend.ingestion import process_pdf
-from backend.agent import create_agent
-from backend.config import config
+from ingestion import process_pdf
+from agent import create_agent
+from config import config
 import json
 
 # Validate configuration on startup
@@ -161,4 +167,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=config.BACKEND_PORT)
+    uvicorn.run("main:app", host="0.0.0.0", port=config.BACKEND_PORT, reload=True)

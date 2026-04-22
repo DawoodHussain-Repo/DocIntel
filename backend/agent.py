@@ -1,14 +1,13 @@
 """LangGraph agent implementation with tools and checkpointer."""
-import os
 from typing import TypedDict, Annotated
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from backend.tools import search_legal_clauses
-from backend.prompts import SYSTEM_PROMPT
-from backend.config import config
+from tools import search_legal_clauses
+from prompts import SYSTEM_PROMPT
+from config import config
 
 
 class AgentState(TypedDict):
@@ -51,7 +50,7 @@ async def create_agent():
     Returns:
         Compiled LangGraph application with persistence
     """
-    from backend.checkpointer import get_checkpointer
+    from checkpointer import get_checkpointer
     
     # Initialize LLM based on provider
     llm = get_llm()
