@@ -41,6 +41,9 @@ class Config:
         )
         self.SEARCH_RESULT_LIMIT = int(os.getenv("SEARCH_RESULT_LIMIT", "3"))
 
+        self.CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
+        self.CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
+
         self.CHROMA_PERSIST_DIR = self._resolve_path(
             os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
         )
@@ -64,6 +67,11 @@ class Config:
         self.MAX_FILE_SIZE_BYTES = self.MAX_FILE_SIZE_MB * 1024 * 1024
         self.MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "2000"))
         self.ALLOWED_MIME_TYPES = ["application/pdf"]
+
+        self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+        self.LOG_FORMAT = os.getenv("LOG_FORMAT", "json").lower()
+
+        self.AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "120"))
 
     @staticmethod
     def _split_csv_env(raw_value: str) -> List[str]:
@@ -101,6 +109,19 @@ class Config:
 
         if not (0 <= self.LLM_TEMPERATURE <= 1):
             raise ValueError("LLM_TEMPERATURE must be between 0 and 1")
+
+        if self.LOG_LEVEL not in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+            raise ValueError(
+                f"Invalid LOG_LEVEL: {self.LOG_LEVEL}. Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL."
+            )
+
+        if self.LOG_FORMAT not in ["json", "console"]:
+            raise ValueError(
+                f"Invalid LOG_FORMAT: {self.LOG_FORMAT}. Must be 'json' or 'console'."
+            )
+
+        if self.AGENT_TIMEOUT_SECONDS <= 0:
+            raise ValueError("AGENT_TIMEOUT_SECONDS must be greater than 0")
 
 
 config = Config()

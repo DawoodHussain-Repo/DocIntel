@@ -21,7 +21,7 @@ class HealthData(BaseModel):
 class StreamDoneData(BaseModel):
     """Final SSE completion payload."""
 
-    finish_reason: Literal["stop", "error"]
+    finish_reason: Literal["stop", "error", "timeout"]
     error: Optional[str] = None
 
 
