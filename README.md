@@ -18,7 +18,8 @@ An enterprise-grade legal document analysis system. Upload PDF contracts, ask na
 
 - **Python 3.10+** with `pip`
 - **Node.js 18+** with `npm`
-- **Groq API key** ([get one here](https://console.groq.com/keys)) — or a running LM Studio instance
+- **LM Studio** running on http://localhost:1234 (or configure GROQ)
+- **Tesseract OCR** (optional, for scanned PDFs) - See [OCR Setup Guide](docs/OCR_SETUP.md)
 
 ## Quick Start
 
@@ -92,6 +93,8 @@ The app will be available at:
 ## Usage
 
 1. **Upload a contract** — Drag-and-drop a PDF into the left panel (or click Browse)
+   - Supports both text-based and scanned PDFs
+   - For scanned PDFs, see [OCR Setup Guide](docs/OCR_SETUP.md)
 2. **Ask questions** — Type a question in the chat panel and press Enter
 3. **Get cited answers** — The agent searches the document, streams its response, and cites every claim with `[Page X]` references
 4. **Conversation persists** — Refresh the browser or restart the backend; your thread survives via SQLite

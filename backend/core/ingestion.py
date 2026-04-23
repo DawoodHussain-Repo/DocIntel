@@ -247,22 +247,87 @@ def semantic_chunk_fallback(
 
 
 def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, Any]:
-    """Parse, chunk, embed, and index a PDF document in ChromaDB."""
+    """
+    Parse, chunk, embed, and index a PDF document in ChromaDB.
+    
+    Strategy:
+    1. Try fast extraction (text-based PDFs)
+    2. If no text found, try hi_res with OCR (scanned PDFs)
+    3. If still no text, raise error
+    """
+    import structlog
+    logger = structlog.get_logger("docintel.ingestion")
+    
+    # Try fast extraction first (no OCR)
     try:
+        logger.info("pdf_parsing_attempt", strategy="fast", filename=filename)
         elements = partition_pdf(
             file_path,
             strategy="fast",
             extract_images_in_pdf=False,
             infer_table_structure=False,
         )
+        
+        # Check if we got any text
+        valid_elements = [element for element in elements if getattr(element, "text", "")]
+        
+        if valid_elements:
+            logger.info("pdf_parsing_success", strategy="fast", element_count=len(valid_elements))
+        else:
+            # No text found with fast strategy, try hi_res with OCR
+            logger.warning("pdf_fast_extraction_empty", filename=filename)
+            logger.info("pdf_parsing_attempt", strategy="hi_res", filename=filename)
+            
+            try:
+                elements = partition_pdf(
+                    file_path,
+                    strategy="hi_res",
+                    extract_images_in_pdf=True,
+                    infer_table_structure=True,
+                )
+                valid_elements = [element for element in elements if getattr(element, "text", "")]
+                
+                if valid_elements:
+                    logger.info("pdf_parsing_success", strategy="hi_res", element_count=len(valid_elements))
+                else:
+                    logger.error("pdf_parsing_no_text", filename=filename)
+                    raise AppError(
+                        message="The uploaded PDF does not contain extractable text. This may be a scanned document without OCR, or an empty PDF.",
+                        code="EMPTY_DOCUMENT",
+                        status_code=422,
+                    )
+            except Exception as ocr_error:
+                # OCR failed, check if it's because Tesseract is missing
+                error_msg = str(ocr_error).lower()
+                if "tesseract" in error_msg:
+                    logger.error("pdf_ocr_failed_no_tesseract", filename=filename)
+                    raise AppError(
+                        message=(
+                            "The uploaded PDF appears to be a scanned document (image-based). "
+                            "OCR is required but Tesseract is not installed. "
+                            "Please upload a text-based PDF or install Tesseract for OCR support."
+                        ),
+                        code="OCR_NOT_AVAILABLE",
+                        status_code=422,
+                    ) from ocr_error
+                else:
+                    logger.exception("pdf_ocr_failed", filename=filename, error=str(ocr_error))
+                    raise AppError(
+                        message=f"Failed to extract text from PDF: {ocr_error}",
+                        code="PDF_PARSE_FAILED",
+                        status_code=500,
+                    ) from ocr_error
+                    
+    except AppError:
+        raise
     except Exception as error:
+        logger.exception("pdf_parsing_failed", filename=filename, error=str(error))
         raise AppError(
             message=f"Failed to parse PDF: {error}",
             code="PDF_PARSE_FAILED",
             status_code=500,
         ) from error
 
-    valid_elements = [element for element in elements if getattr(element, "text", "")]
     if not valid_elements:
         raise AppError(
             message="The uploaded PDF does not contain extractable text.",
