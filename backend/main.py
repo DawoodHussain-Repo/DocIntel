@@ -13,11 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from core.agent import create_agent
 from core.checkpointer import set_checkpointer
 from core.config import config
 from core.errors import AppError
 from core.models import ErrorResponse, HealthData, SuccessResponse
+from dependencies.agent import get_agent_service
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from utils.logger import setup_logging
 from api.middleware import LoggingMiddleware
@@ -53,7 +53,8 @@ async def lifespan(app: FastAPI):
             set_checkpointer(checkpointer)
             logger.info("checkpointer_initialized", db_path=str(config.SQLITE_DB_PATH))
             
-            app.state.agent = await create_agent(app.state.chroma_client)
+            # Initialize agent service (will be created on-demand via dependency injection)
+            logger.info("agent_service_ready")
             logger.info("application_startup_completed")
             
             yield
@@ -220,16 +221,14 @@ async def chat_stream(
         thread_id=thread_id,
     )
     
-    agent = getattr(app.state, "agent", None)
-    if agent is None:
-        logger.error("agent_not_ready")
-        raise AppError(
-            message="Agent is not initialized yet.",
-            code="AGENT_NOT_READY",
-            status_code=503,
-        )
+    # Get agent service via dependency injection
+    agent_service = get_agent_service(request.app.state.chroma_client)
 
-    event_stream = stream_chat_events(agent=agent, query=query, thread_id=thread_id)
+    event_stream = stream_chat_events(
+        agent_service=agent_service,
+        query=query,
+        thread_id=thread_id,
+    )
     return StreamingResponse(
         event_stream,
         media_type="text/event-stream",
@@ -258,9 +257,13 @@ async def health_check() -> SuccessResponse:
         logger.warning("health_check_chromadb_failed", error=str(error))
         checks["chromadb"] = "error"
     
-    # Check Agent
-    agent = getattr(app.state, "agent", None)
-    checks["agent"] = "ok" if agent is not None else "not_initialized"
+    # Check Agent Service
+    try:
+        agent_service = get_agent_service(app.state.chroma_client)
+        checks["agent_service"] = "ok" if agent_service is not None else "not_initialized"
+    except Exception as error:
+        logger.warning("health_check_agent_failed", error=str(error))
+        checks["agent_service"] = "error"
     
     # Check SQLite checkpointer
     try:

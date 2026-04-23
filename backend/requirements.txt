@@ -15,3 +15,4 @@ aiofiles==24.1.0
 tiktoken==0.8.0
 structlog==24.1.0
 slowapi==0.1.9
+tenacity==8.2.3

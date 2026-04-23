@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage
 from core.config import config
 from core.errors import AppError
 from core.models import StreamDoneData
+from services.agent_service import AgentService
 from utils.logger import sanitize_for_logging
 
 
@@ -80,7 +81,7 @@ def _extract_text(chunk: Any) -> str:
 
 
 async def stream_chat_events(
-    agent: Any,
+    agent_service: AgentService,
     query: str,
     thread_id: str,
 ) -> AsyncGenerator[str, None]:
@@ -99,13 +100,6 @@ async def stream_chat_events(
         query_preview=sanitize_for_logging(sanitized_query, max_length=80),
     )
     
-    agent_input = {
-        "messages": [HumanMessage(content=sanitized_query)],
-        "run_id": run_id,
-        "thread_id": validated_thread_id,
-    }
-    agent_config = {"configurable": {"thread_id": validated_thread_id}}
-
     token_count = 0
     tool_call_count = 0
 
@@ -114,7 +108,11 @@ async def stream_chat_events(
         async def _stream_with_timeout():
             nonlocal token_count, tool_call_count
             
-            async for event in agent.astream_events(agent_input, agent_config, version="v1"):
+            async for event in agent_service.stream(
+                sanitized_query,
+                validated_thread_id,
+                run_id,
+            ):
                 if event.get("event") != "on_chat_model_stream":
                     continue
 
