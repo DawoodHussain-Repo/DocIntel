@@ -13,14 +13,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from agent import create_agent
-from checkpointer import set_checkpointer
-from config import config
-from errors import AppError
+from core.agent import create_agent
+from core.checkpointer import set_checkpointer
+from core.config import config
+from core.errors import AppError
+from core.models import ErrorResponse, HealthData, SuccessResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from logger import setup_logging
-from middleware import LoggingMiddleware
-from models import ErrorResponse, HealthData, SuccessResponse
+from utils.logger import setup_logging
+from api.middleware import LoggingMiddleware
 from services.chat_service import stream_chat_events
 from services.upload_service import process_contract_upload
 
@@ -264,7 +264,7 @@ async def health_check() -> SuccessResponse:
     
     # Check SQLite checkpointer
     try:
-        from checkpointer import get_checkpointer
+        from core.checkpointer import get_checkpointer
         checkpointer = get_checkpointer()
         checks["checkpointer"] = "ok" if checkpointer is not None else "not_initialized"
     except Exception as error:

@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 import structlog
 from langchain.tools import tool
 
-from config import config
+from core.config import config
 
 
 logger = structlog.get_logger("docintel.tools")

@@ -5,8 +5,8 @@ from typing import Any, Dict, List
 from sentence_transformers import SentenceTransformer
 from unstructured.partition.pdf import partition_pdf
 
-from config import config
-from errors import AppError
+from core.config import config
+from core.errors import AppError
 
 COLLECTION_NAME = "legal_docs"
 

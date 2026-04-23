@@ -7,10 +7,10 @@ from typing import Any, AsyncGenerator, Dict
 import structlog
 from langchain_core.messages import HumanMessage
 
-from config import config
-from errors import AppError
-from logger import sanitize_for_logging
-from models import StreamDoneData
+from core.config import config
+from core.errors import AppError
+from core.models import StreamDoneData
+from utils.logger import sanitize_for_logging
 
 
 logger = structlog.get_logger("docintel.chat_service")

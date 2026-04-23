@@ -3,7 +3,7 @@ from typing import Optional
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from config import config
+from core.config import config
 
 _checkpointer: Optional[AsyncSqliteSaver] = None
 

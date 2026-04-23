@@ -5,7 +5,7 @@ from typing import Any
 
 import structlog
 
-from config import config
+from core.config import config
 
 
 def setup_logging() -> None:

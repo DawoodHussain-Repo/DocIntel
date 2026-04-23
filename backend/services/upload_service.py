@@ -4,10 +4,10 @@ from typing import Any, Optional
 
 import structlog
 
-from ingestion import process_pdf
-from models import UploadContractData
-from errors import AppError
-from config import config
+from core.ingestion import process_pdf
+from core.models import UploadContractData
+from core.errors import AppError
+from core.config import config
 
 
 logger = structlog.get_logger("docintel.upload_service")

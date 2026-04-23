@@ -10,10 +10,10 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from checkpointer import get_checkpointer
-from config import config
-from prompts import SYSTEM_PROMPT
-from tools import create_search_legal_clauses_tool
+from core.checkpointer import get_checkpointer
+from core.config import config
+from core.prompts import SYSTEM_PROMPT
+from core.tools import create_search_legal_clauses_tool
 
 
 logger = structlog.get_logger("docintel.agent")
