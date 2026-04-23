@@ -1,9 +1,28 @@
 """ChromaDB tools for legal document search."""
+import re
 from typing import Any, Dict, List
 
+import structlog
 from langchain.tools import tool
 
 from config import config
+
+
+logger = structlog.get_logger("docintel.tools")
+
+
+def _sanitize_query(query: str) -> str:
+    """Sanitize user query to prevent injection and limit length."""
+    sanitized = query.strip()
+    
+    # Remove control characters
+    sanitized = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', sanitized)
+    
+    # Trim to max length
+    if len(sanitized) > config.MAX_QUERY_LENGTH:
+        sanitized = sanitized[:config.MAX_QUERY_LENGTH]
+    
+    return sanitized
 
 
 def _format_query_results(
@@ -42,20 +61,42 @@ def create_search_legal_clauses_tool(chroma_client: Any):
         Returns:
             String payload with formatted clause excerpts or failure text.
         """
+        sanitized_query = _sanitize_query(query)
+        
+        if not sanitized_query:
+            logger.warning("tool_search_empty_query")
+            return "This clause is not present in the document."
+        
+        logger.info(
+            "tool_search_invoked",
+            query_length=len(sanitized_query),
+        )
+        
         try:
             collection = chroma_client.get_collection("legal_docs")
             results = collection.query(
-                query_texts=[query],
+                query_texts=[sanitized_query],
                 n_results=config.SEARCH_RESULT_LIMIT,
             )
 
             documents = results.get("documents", [[]])
             metadatas = results.get("metadatas", [[]])
+            
             if not documents or not documents[0]:
+                logger.info("tool_search_no_results")
                 return "This clause is not present in the document."
 
+            result_count = len(documents[0])
+            logger.info("tool_search_completed", result_count=result_count)
+            
             return _format_query_results(documents[0], metadatas[0])
+            
         except Exception as error:
+            logger.exception(
+                "tool_search_failed",
+                error_type=type(error).__name__,
+                error_message=str(error),
+            )
             return f"Search failed: {error}. Please try a different query."
 
     return search_legal_clauses
