@@ -1,266 +1,158 @@
-# DocIntel — Enterprise Legal Document Processing Pipeline
+# DocIntel — AI-Powered Legal Document Intelligence
 
-An AI-powered legal document analysis system built with LangGraph, FastAPI, and Next.js.
+An enterprise-grade legal document analysis system. Upload PDF contracts, ask natural-language questions, and receive citation-grounded answers powered by a LangGraph agent with semantic search.
 
-## Architecture
+## Tech Stack
 
-- **Backend**: Python + FastAPI
-- **Agentic Core**: LangGraph + LangChain
-- **Vector DB**: ChromaDB (local, persistent)
-- **Persistence**: SQLite (via LangGraph SqliteSaver)
-- **PDF Parsing**: Unstructured.io
-- **Frontend**: Next.js 14 (App Router)
-- **Streaming**: Server-Sent Events (SSE)
-- **LLM**: OpenAI-compatible models (configurable)
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.10+ · FastAPI · Uvicorn |
+| Agentic Core | LangGraph · LangChain · OpenAI-compatible LLMs |
+| Vector DB | ChromaDB (persistent, local) |
+| Embeddings | Sentence-Transformers (`all-MiniLM-L6-v2`) |
+| Persistence | SQLite (LangGraph AsyncSqliteSaver) |
+| Frontend | Next.js 15 (App Router) · React 19 · Tailwind CSS |
+| Streaming | Server-Sent Events (SSE) |
 
-## Features
+## Prerequisites
 
-✅ PDF ingestion with heading-aware chunking  
-✅ Semantic search over legal documents  
-✅ LangGraph agent with tool calling  
-✅ Persistent conversation history (survives restarts)  
-✅ Real-time streaming responses with SSE  
-✅ Citation tracking with [Page X] references  
-✅ Drag-and-drop file upload  
+- **Python 3.10+** with `pip`
+- **Node.js 18+** with `npm`
+- **Groq API key** ([get one here](https://console.groq.com/keys)) — or a running LM Studio instance
 
-## Setup
+## Quick Start
 
-### Prerequisites
+### 1. Clone & Configure
 
-- Python 3.10+
-- Node.js 18+
-- OpenAI API key (or compatible endpoint)
+```powershell
+git clone https://github.com/DawoodHussain-Repo/DocIntel.git
+cd DocIntel
+cp .env.example .env
+```
 
-### Backend Setup
+Edit `.env` and set your Groq API key:
 
-1. **Install Python dependencies**:
-   ```powershell
-   cd backend
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   pip install -r ..\requirements.txt
-   ```
+```env
+LLM_PROVIDER=groq
+GROQ_API_KEY=your_key_here
+```
 
-   Or use the automated setup script:
-   ```powershell
-   .\setup.ps1
-   ```
+### 2. Install Dependencies
 
-2. **Configure environment**:
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit `.env` and choose your LLM provider:
-   
-   **For Groq (default)**:
-   ```
-   LLM_PROVIDER=groq
-   GROQ_API_KEY=your_groq_api_key_here
-   GROQ_MODEL=llama-3.1-70b-versatile
-   ```
-   
-   **For LM Studio (local testing)**:
-   ```
-   LLM_PROVIDER=lmstudio
-   LMSTUDIO_BASE_URL=http://localhost:1234/v1
-   LMSTUDIO_MODEL=local-model
-   ```
-   
-   Note: Make sure LM Studio is running with a model loaded before using `lmstudio` provider.
+**Backend** (Python):
 
-3. **Run the backend**:
-   ```powershell
-   cd backend
-   .\venv\Scripts\Activate.ps1
-   python main.py
-   ```
-   
-   Or use the start script:
-   ```powershell
-   .\start-backend.ps1
-   ```
-   
-   Backend will start on `http://localhost:8000`
+```powershell
+cd backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cd ..
+```
 
-### Frontend Setup
+**Frontend** (Node.js):
 
-1. **Install dependencies**:
-   ```bash
-   cd frontend
-   npm install
-   ```
+```powershell
+cd frontend
+npm install
+cd ..
+```
 
-2. **Run the development server**:
-   ```powershell
-   npm run dev
-   ```
-   
-   Or use the start script from root:
-   ```powershell
-   .\start-frontend.ps1
-   ```
-   
-   Frontend will start on `http://localhost:3000`
+### 3. Run the Application
+
+> **⚠️ Important:** Always activate the backend virtual environment before starting the backend. Without it, Python will not find the installed packages and the server will crash with import errors.
+
+Open **two separate terminals** from the project root:
+
+**Terminal 1 — Backend:**
+
+```powershell
+cd backend
+.\venv\Scripts\Activate.ps1
+python main.py
+```
+
+**Terminal 2 — Frontend:**
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Or use the convenience script that opens both terminals automatically:
+
+```powershell
+.\start.ps1
+```
+
+The app will be available at:
+- **Frontend:** http://localhost:3000
+- **Backend API:** http://localhost:8000
+- **API Docs (Swagger):** http://localhost:8000/docs
 
 ## Usage
 
-### 1. Upload a Contract
+1. **Upload a contract** — Drag-and-drop a PDF into the left panel (or click Browse)
+2. **Ask questions** — Type a question in the chat panel and press Enter
+3. **Get cited answers** — The agent searches the document, streams its response, and cites every claim with `[Page X]` references
+4. **Conversation persists** — Refresh the browser or restart the backend; your thread survives via SQLite
 
-- Drag and drop a PDF file into the left pane, or click to browse
-- The system will parse, chunk, and index the document
-- You'll see the document appear in the "Uploaded Documents" list
+## Configuration
 
-### 2. Ask Questions
+All settings are managed through `.env`. See [`.env.example`](.env.example) for the full list. Key options:
 
-- Type your question in the chat input (right pane)
-- Press Enter to send (Shift+Enter for new line)
-- Watch the agent:
-  - Call the `search_legal_clauses` tool (shown as amber badge)
-  - Stream the response token-by-token
-  - Include [Page X] citations for every claim
-
-### 3. Conversation Persistence
-
-- Your conversation is saved to `docintel_memory.db`
-- Refresh the page — your history persists (same session)
-- Restart the backend — your history still persists
-
-## API Endpoints
-
-### `POST /api/upload_contract`
-
-Upload and process a PDF contract.
-
-**Request**:
-```bash
-curl -X POST http://localhost:8000/api/upload_contract \
-  -F "file=@contract.pdf"
-```
-
-**Response**:
-```json
-{
-  "status": "success",
-  "file": "contract.pdf",
-  "chunks_indexed": 42,
-  "collection": "legal_docs"
-}
-```
-
-### `GET /api/chat/stream`
-
-Stream chat responses via SSE.
-
-**Request**:
-```bash
-curl "http://localhost:8000/api/chat/stream?query=What%20are%20the%20payment%20terms?&thread_id=550e8400-e29b-41d4-a716-446655440000"
-```
-
-**Response** (SSE stream):
-```
-event: tool_call
-data: {"tool": "search_legal_clauses", "query": "payment terms"}
-
-event: token
-data: {"text": "The"}
-
-event: token
-data: {"text": " payment"}
-
-event: done
-data: {"finish_reason": "stop"}
-```
-
-## Demo Script (Interview Acceptance Criteria)
-
-Run these 5 checks to verify the system is interview-ready:
-
-1. **Upload a PDF**: Drag-and-drop a legal contract → verify chunk count returned
-2. **Ask about a clause**: "What are the indemnification obligations?" → verify tool call badge appears, then streams answer with [Page X] citations
-3. **Ask about missing clause**: "What is the refund policy?" → verify response: "This clause is not present in the document."
-4. **Refresh browser**: Re-ask previous question → verify conversation history persists
-5. **Restart backend**: Kill and restart `python main.py`, send a message → verify SqliteSaver restored the thread
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_PROVIDER` | `groq` | `groq` or `lmstudio` |
+| `GROQ_API_KEY` | — | Required when using Groq |
+| `GROQ_MODEL` | `llama-3.1-70b-versatile` | Model identifier |
+| `LLM_TEMPERATURE` | `0.2` | Response randomness (0–1) |
+| `BACKEND_PORT` | `8000` | FastAPI server port |
+| `MAX_FILE_SIZE_MB` | `20` | Upload size limit |
 
 ## Project Structure
 
 ```
-/docintel
-  /backend
-    main.py              # FastAPI app with upload + streaming endpoints
-    ingestion.py         # PDF parsing, chunking, embedding, ChromaDB upsert
-    agent.py             # LangGraph agent with tools and checkpointer
-    tools.py             # search_legal_clauses tool
-    checkpointer.py      # SqliteSaver initialization
-  /frontend
-    /app
-      page.tsx           # Main layout (dual-pane)
-      layout.tsx         # Root layout
-      globals.css        # Tailwind styles
-      /components
-        UploadPane.tsx   # Left pane: upload + doc list
-        ChatPane.tsx     # Right pane: chat interface with SSE
-  requirements.txt       # Pinned Python dependencies
-  .env.example           # Environment template
-  README.md              # This file
+DocIntel/
+├── backend/
+│   ├── main.py              # FastAPI app, lifespan, CORS, error handlers
+│   ├── agent.py             # LangGraph agent graph definition
+│   ├── ingestion.py         # PDF parsing, chunking, embedding, ChromaDB upsert
+│   ├── tools.py             # search_legal_clauses tool
+│   ├── config.py            # Single source of truth for all env vars
+│   ├── checkpointer.py      # AsyncSqliteSaver lifecycle
+│   ├── models.py            # Pydantic request/response schemas
+│   ├── prompts.py           # System prompts (versioned)
+│   ├── errors.py            # Structured error types
+│   ├── services/
+│   │   ├── chat_service.py  # SSE streaming orchestration
+│   │   └── upload_service.py# Upload validation + ingestion
+│   └── requirements.txt
+├── frontend/
+│   ├── app/
+│   │   ├── page.tsx         # Root page (dual-pane layout)
+│   │   ├── layout.tsx       # HTML shell, fonts, metadata
+│   │   └── globals.css      # Design system
+│   ├── components/
+│   │   ├── ChatPane.tsx     # Chat interface with SSE streaming
+│   │   └── UploadPane.tsx   # Document upload + index list
+│   ├── hooks/               # useChatStream, useContractUpload, etc.
+│   └── lib/                 # API client, SSE parser, types, config
+├── docs/
+│   ├── api.md               # Full API reference
+│   ├── architecture.md      # System architecture & diagrams
+│   └── design.md            # UI design system documentation
+├── start.ps1                # Launch both servers (separate terminals)
+├── .env.example             # Environment variable template
+└── README.md                # ← You are here
 ```
 
-## Configuration
+## Documentation
 
-All configuration is via `.env`:
+Detailed docs live in the [`docs/`](docs/) folder:
 
-```bash
-# LLM Provider: "groq" or "lmstudio"
-LLM_PROVIDER=groq
-
-# Groq Configuration
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=llama-3.1-70b-versatile
-
-# LM Studio Configuration (local testing)
-LMSTUDIO_BASE_URL=http://localhost:1234/v1
-LMSTUDIO_MODEL=local-model
-
-# Storage
-CHROMA_PERSIST_DIR=./chroma_db
-SQLITE_DB_PATH=./docintel_memory.db
-
-# Server
-BACKEND_PORT=8000
-FRONTEND_URL=http://localhost:3000
-```
-
-### Switching Between Providers
-
-**Use Groq (cloud)**:
-```bash
-LLM_PROVIDER=groq
-```
-
-**Use LM Studio (local)**:
-```bash
-LLM_PROVIDER=lmstudio
-```
-
-Make sure LM Studio is running with a model loaded before switching to `lmstudio`.
-
-## Troubleshooting
-
-**ChromaDB collection empty error**:
-- The agent will respond: "No documents have been indexed yet. Please upload a contract first."
-
-**CORS errors**:
-- Ensure `FRONTEND_URL` in `.env` matches your frontend URL
-- Default: `http://localhost:3000`
-
-**Conversation not persisting**:
-- Check that `docintel_memory.db` exists in the backend directory
-- Verify `thread_id` is being passed correctly (check browser console)
-
-**PDF parsing fails**:
-- Ensure the file is a valid PDF (MIME type check)
-- Check file size is under 20MB
-- Review backend logs for detailed error messages
+- **[API Reference](docs/api.md)** — Endpoints, schemas, SSE event spec, error codes
+- **[Architecture](docs/architecture.md)** — System design, data flow, LangGraph topology
+- **[Design System](docs/design.md)** — Color palette, typography, component catalog
 
 ## License
 

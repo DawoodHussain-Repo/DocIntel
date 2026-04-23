@@ -1,41 +1,50 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import UploadPane from "./components/UploadPane";
-import ChatPane from "./components/ChatPane";
+import ChatPane from "@/components/ChatPane";
+import UploadPane from "@/components/UploadPane";
+import { useChatStream } from "@/hooks/useChatStream";
+import { useContractUpload } from "@/hooks/useContractUpload";
+import { useThreadId } from "@/hooks/useThreadId";
+import { useUploadedDocuments } from "@/hooks/useUploadedDocuments";
 
 export default function Home() {
-  const [uploadedDocs, setUploadedDocs] = useState<
-    Array<{ filename: string; chunks: number }>
-  >([]);
-  const [threadId, setThreadId] = useState<string>("");
+  const threadId = useThreadId();
+  const { documents, addDocument, removeDocument } = useUploadedDocuments();
+  const {
+    messages,
+    isStreaming,
+    streamError,
+    currentToolCall,
+    sendMessage,
+    clearConversation,
+  } = useChatStream(threadId);
 
-  useEffect(() => {
-    // Generate or retrieve thread_id from sessionStorage
-    let storedThreadId = sessionStorage.getItem("docintel_thread_id");
-    if (!storedThreadId) {
-      storedThreadId = crypto.randomUUID();
-      sessionStorage.setItem("docintel_thread_id", storedThreadId);
-    }
-    setThreadId(storedThreadId);
-  }, []);
-
-  const handleUploadSuccess = (filename: string, chunks: number) => {
-    setUploadedDocs((prev) => [...prev, { filename, chunks }]);
-  };
-
-  const handleRemoveDoc = (filename: string) => {
-    setUploadedDocs((prev) => prev.filter((doc) => doc.filename !== filename));
-  };
+  const { uploadFile, isUploading, uploadError } = useContractUpload({
+    onUploadSuccess: addDocument,
+  });
 
   return (
-    <div className="flex h-screen w-screen">
+    <main className="app-shell">
+      <div className="ambient-gradient" />
+      <div className="ambient-grid" />
+
       <UploadPane
-        uploadedDocs={uploadedDocs}
-        onUploadSuccess={handleUploadSuccess}
-        onRemoveDoc={handleRemoveDoc}
+        documents={documents}
+        isUploading={isUploading}
+        uploadError={uploadError}
+        onUploadFile={uploadFile}
+        onRemoveDocument={removeDocument}
       />
-      <ChatPane threadId={threadId} />
-    </div>
+
+      <ChatPane
+        messages={messages}
+        isStreaming={isStreaming}
+        streamError={streamError}
+        currentToolCall={currentToolCall}
+        threadId={threadId}
+        onSendMessage={sendMessage}
+        onClearConversation={clearConversation}
+      />
+    </main>
   );
 }
