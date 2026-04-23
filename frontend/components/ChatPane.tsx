@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { MAX_QUERY_LENGTH, QUERY_WARNING_THRESHOLD } from "@/lib/config";
 import { ChatMessage, ToolCallEvent } from "@/lib/types";
 
 interface ChatPaneProps {
@@ -49,10 +50,15 @@ export default function ChatPane(props: ChatPaneProps) {
   const endOfMessagesRef = useRef<HTMLDivElement>(null);
 
   const shortThreadId = useMemo(() => threadId.slice(0, 8), [threadId]);
+  
+  const queryLength = draftMessage.length;
+  const showCharacterCount = queryLength > QUERY_WARNING_THRESHOLD;
+  const isQueryTooLong = queryLength > MAX_QUERY_LENGTH;
+  const canSend = !isStreaming && !isQueryTooLong && draftMessage.trim().length > 0 && threadId;
 
   const handleSend = async (): Promise<void> => {
     const trimmedMessage = draftMessage.trim();
-    if (!trimmedMessage || isStreaming || !threadId) {
+    if (!trimmedMessage || isStreaming || !threadId || isQueryTooLong) {
       return;
     }
 
@@ -136,11 +142,18 @@ export default function ChatPane(props: ChatPaneProps) {
         />
         <div className="composer-actions">
           <p className="thread-chip">Thread {shortThreadId || "pending"}</p>
+          {showCharacterCount && (
+            <p
+              className={`text-xs ${isQueryTooLong ? "text-red-400" : "text-amber-400"}`}
+            >
+              {queryLength}/{MAX_QUERY_LENGTH}
+            </p>
+          )}
           <button
             type="button"
             className="button-primary"
             onClick={() => void handleSend()}
-            disabled={isStreaming || draftMessage.trim().length === 0}
+            disabled={!canSend}
           >
             {isStreaming ? "Streaming..." : "Send"}
           </button>

@@ -108,6 +108,10 @@ All settings are managed through `.env`. See [`.env.example`](.env.example) for 
 | `LLM_TEMPERATURE` | `0.2` | Response randomness (0–1) |
 | `BACKEND_PORT` | `8000` | FastAPI server port |
 | `MAX_FILE_SIZE_MB` | `20` | Upload size limit |
+| `CHUNK_SIZE` | `1000` | Maximum characters per chunk |
+| `CHUNK_OVERLAP` | `200` | Overlap between chunks for context preservation |
+| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+| `LOG_FORMAT` | `json` | Log output format (`json` for production, `console` for development) |
 
 ## Project Structure
 
