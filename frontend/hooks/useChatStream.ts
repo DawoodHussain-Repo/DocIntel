@@ -132,6 +132,27 @@ export function useChatStream(threadId: string) {
               fallbackMessage,
             );
           });
+        } else if (event.finish_reason === "timeout") {
+          const timeoutMessage =
+            event.error ?? "The agent timed out. Please try again.";
+          setStreamError(timeoutMessage);
+          setMessages((previousMessages) => {
+            const hasAssistantContent = previousMessages.some(
+              (message) =>
+                message.id === assistantMessageId &&
+                message.content.trim().length > 0,
+            );
+
+            if (hasAssistantContent) {
+              return previousMessages;
+            }
+
+            return appendTokenToAssistantMessage(
+              previousMessages,
+              assistantMessageId,
+              timeoutMessage,
+            );
+          });
         }
       },
     });

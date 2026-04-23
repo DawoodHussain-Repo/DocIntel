@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { uploadContract } from "@/lib/api";
+import { MAX_FILE_SIZE_BYTES } from "@/lib/config";
 import { UploadedDocument } from "@/lib/types";
 
 interface UseContractUploadOptions {
@@ -15,8 +16,21 @@ export function useContractUpload(options: UseContractUploadOptions) {
 
   const uploadFile = useCallback(
     async (file: File): Promise<void> => {
+      // Client-side validation
       if (file.type !== "application/pdf") {
         setUploadError("Only PDF files are allowed.");
+        return;
+      }
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        setUploadError(
+          `File size exceeds ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB limit.`
+        );
+        return;
+      }
+
+      if (file.size === 0) {
+        setUploadError("File is empty.");
         return;
       }
 
