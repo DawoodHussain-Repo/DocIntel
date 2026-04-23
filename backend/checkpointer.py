@@ -1,14 +1,19 @@
 """Conversation persistence using AsyncSqliteSaver."""
+from typing import Optional
+
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
 from config import config
 
+_checkpointer: Optional[AsyncSqliteSaver] = None
 
-async def get_checkpointer():
-    """Initialize and return AsyncSqliteSaver for conversation persistence.
-    
-    Returns:
-        AsyncSqliteSaver: Configured checkpointer instance
-    """
-    checkpointer = AsyncSqliteSaver.from_conn_string(config.SQLITE_DB_PATH)
-    await checkpointer.setup()
-    return checkpointer
+
+def get_checkpointer() -> Optional[AsyncSqliteSaver]:
+    """Return the singleton checkpointer instance set during startup."""
+    return _checkpointer
+
+
+def set_checkpointer(checkpointer: AsyncSqliteSaver) -> None:
+    """Store the checkpointer instance created during app lifespan."""
+    global _checkpointer
+    _checkpointer = checkpointer

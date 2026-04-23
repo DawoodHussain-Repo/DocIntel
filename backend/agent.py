@@ -1,111 +1,87 @@
 """LangGraph agent implementation with tools and checkpointer."""
-from typing import TypedDict, Annotated
-from langchain_openai import ChatOpenAI
+from typing import Annotated, Any, TypedDict
+
 from langchain_core.messages import SystemMessage
-from langgraph.graph import StateGraph, END
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from tools import search_legal_clauses
-from prompts import SYSTEM_PROMPT
+
+from checkpointer import get_checkpointer
 from config import config
+from prompts import SYSTEM_PROMPT
+from tools import create_search_legal_clauses_tool
 
 
 class AgentState(TypedDict):
-    """State schema for the agent graph."""
+    """State schema for the DocIntel conversation graph."""
+
     messages: Annotated[list, add_messages]
 
 
-def get_llm():
-    """Initialize LLM based on provider selection from config.
-    
-    Returns:
-        ChatOpenAI: Configured LLM instance
-        
-    Raises:
-        ValueError: If LLM_PROVIDER is invalid
-    """
+def get_llm() -> ChatOpenAI:
+    """Build a configured chat model instance for the selected provider."""
     if config.LLM_PROVIDER == "groq":
         return ChatOpenAI(
             model=config.GROQ_MODEL,
             api_key=config.GROQ_API_KEY,
             base_url=config.GROQ_BASE_URL,
             streaming=True,
-            temperature=0.7
+            temperature=config.LLM_TEMPERATURE,
         )
-    elif config.LLM_PROVIDER == "lmstudio":
+
+    if config.LLM_PROVIDER == "lmstudio":
         return ChatOpenAI(
             model=config.LMSTUDIO_MODEL,
             api_key=config.LMSTUDIO_API_KEY,
             base_url=config.LMSTUDIO_BASE_URL,
             streaming=True,
-            temperature=0.7
+            temperature=config.LLM_TEMPERATURE,
         )
-    else:
-        raise ValueError(f"Unknown LLM_PROVIDER: {config.LLM_PROVIDER}. Use 'groq' or 'lmstudio'")
+
+    raise ValueError(
+        f"Unknown LLM_PROVIDER: {config.LLM_PROVIDER}. Use 'groq' or 'lmstudio'."
+    )
 
 
-async def create_agent():
-    """Create the LangGraph agent with tools and checkpointer.
-    
-    Returns:
-        Compiled LangGraph application with persistence
-    """
-    from checkpointer import get_checkpointer
-    
-    # Initialize LLM based on provider
+async def create_agent(chroma_client: Any) -> Any:
+    """Create and compile the LangGraph app with persistence and tools."""
     llm = get_llm()
-    
-    # Bind tools to LLM
+    search_legal_clauses = create_search_legal_clauses_tool(chroma_client)
     tools = [search_legal_clauses]
+
     llm_with_tools = llm.bind_tools(tools)
-    
-    # Define agent node
-    def call_model(state: AgentState):
-        """Agent node that calls the LLM with tools."""
+
+    async def call_model(state: AgentState) -> dict:
+        """Call the model node with system prompt grounding and tool binding."""
         messages = state["messages"]
-        
-        # Inject system prompt if not present
-        if not any(isinstance(m, SystemMessage) for m in messages):
+        if not any(isinstance(message, SystemMessage) for message in messages):
             messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
-        
-        response = llm_with_tools.invoke(messages)
+
+        response = await llm_with_tools.ainvoke(messages)
         return {"messages": [response]}
-    
-    # Define routing logic
-    def should_continue(state: AgentState):
-        """Determine if we should continue to tools or end."""
+
+    def should_continue(state: AgentState) -> str:
+        """Route model output to tools when tool calls are requested."""
         last_message = state["messages"][-1]
-        
-        # If there are tool calls, continue to tools
-        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        if getattr(last_message, "tool_calls", None):
             return "tools"
-        
-        # Otherwise, end
         return END
-    
-    # Build graph
+
     workflow = StateGraph(AgentState)
-    
-    # Add nodes
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", ToolNode(tools))
-    
-    # Set entry point
     workflow.set_entry_point("agent")
-    
-    # Add edges
+
     workflow.add_conditional_edges(
         "agent",
         should_continue,
         {
             "tools": "tools",
-            END: END
-        }
+            END: END,
+        },
     )
     workflow.add_edge("tools", "agent")
-    
-    # Compile with checkpointer
-    checkpointer = await get_checkpointer()
-    app = workflow.compile(checkpointer=checkpointer)
-    
-    return app
+
+    checkpointer = get_checkpointer()
+    return workflow.compile(checkpointer=checkpointer)

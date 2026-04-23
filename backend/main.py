@@ -1,170 +1,152 @@
-"""FastAPI application with PDF upload and SSE streaming endpoints."""
-import os
-import sys
-import uuid
-import aiofiles
-from pathlib import Path
+"""FastAPI application with secure upload and streaming chat endpoints."""
+from contextlib import asynccontextmanager
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import chromadb
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
-from ingestion import process_pdf
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+
 from agent import create_agent
+from checkpointer import set_checkpointer
 from config import config
-import json
+from errors import AppError
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from models import ErrorResponse, HealthData, SuccessResponse
+from services.chat_service import stream_chat_events
+from services.upload_service import process_contract_upload
 
-# Validate configuration on startup
-config.validate()
 
-app = FastAPI(title="DocIntel API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize runtime dependencies and validate startup configuration."""
+    config.validate()
+    app.state.chroma_client = chromadb.PersistentClient(
+        path=str(config.CHROMA_PERSIST_DIR)
+    )
+    async with AsyncSqliteSaver.from_conn_string(
+        str(config.SQLITE_DB_PATH)
+    ) as checkpointer:
+        set_checkpointer(checkpointer)
+        app.state.agent = await create_agent(app.state.chroma_client)
+        yield
 
-# CORS middleware
+
+app = FastAPI(
+    title=config.APP_NAME,
+    version=config.APP_VERSION,
+    lifespan=lifespan,
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[config.FRONTEND_URL],
+    allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Initialize agent on startup
-agent = None
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.ALLOWED_HOSTS)
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize agent on application startup."""
-    global agent
-    agent = await create_agent()
 
-@app.post("/api/upload_contract")
-async def upload_contract(file: UploadFile = File(...)):
-    """Upload and process a PDF contract.
-    
-    Args:
-        file: PDF file to process
-        
-    Returns:
-        JSON with status, filename, chunks indexed, and collection name
-        
-    Raises:
-        HTTPException: 400 if not PDF, 413 if too large, 500 on processing error
-    """
-    
-    # Validate file type
-    if file.content_type not in config.ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail="File must be a PDF")
-    
-    # Read file content
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Attach baseline security headers to every HTTP response."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(_: Request, error: AppError) -> JSONResponse:
+    """Return structured API errors for known application exceptions."""
+    payload = ErrorResponse(
+        error=error.message,
+        code=error.code,
+        details=error.details,
+    )
+    return JSONResponse(status_code=error.status_code, content=payload.model_dump())
+
+
+@app.exception_handler(HTTPException)
+async def http_error_handler(_: Request, error: HTTPException) -> JSONResponse:
+    """Map HTTPExceptions into the standard error response envelope."""
+    detail = error.detail if isinstance(error.detail, str) else "Request failed."
+    payload = ErrorResponse(error=detail, code="HTTP_ERROR")
+    return JSONResponse(status_code=error.status_code, content=payload.model_dump())
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(_: Request, error: RequestValidationError) -> JSONResponse:
+    """Return typed validation failures for malformed request payloads."""
+    payload = ErrorResponse(
+        error="Request validation failed.",
+        code="VALIDATION_ERROR",
+        details={"errors": error.errors()},
+    )
+    return JSONResponse(status_code=422, content=payload.model_dump())
+
+
+@app.exception_handler(Exception)
+async def unhandled_error_handler(_: Request, _error: Exception) -> JSONResponse:
+    """Return a safe generic payload for unhandled server errors."""
+    payload = ErrorResponse(
+        error="Internal server error.",
+        code="INTERNAL_SERVER_ERROR",
+        details=None,
+    )
+    return JSONResponse(status_code=500, content=payload.model_dump())
+
+
+@app.post("/api/upload_contract", response_model=SuccessResponse, status_code=201)
+async def upload_contract(file: UploadFile = File(...)) -> SuccessResponse:
+    """Validate and index an uploaded contract PDF."""
     content = await file.read()
-    
-    # Check file size
-    if len(content) > config.MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413, 
-            detail=f"File size exceeds {config.MAX_FILE_SIZE_MB}MB limit"
-        )
-    
-    # Save to temp file with UUID
-    temp_filename = f"{uuid.uuid4()}.pdf"
-    temp_path = f"/tmp/{temp_filename}"
-    
-    try:
-        async with aiofiles.open(temp_path, "wb") as f:
-            await f.write(content)
-        
-        # Process PDF
-        result = process_pdf(temp_path, file.filename)
-        
-        return result
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
-    
-    finally:
-        # Clean up temp file
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+    result = process_contract_upload(
+        file.filename, file.content_type, content, app.state.chroma_client
+    )
+    return SuccessResponse(data=result.model_dump())
+
 
 @app.get("/api/chat/stream")
 async def chat_stream(
-    query: str = Query(...),
-    thread_id: str = Query(...)
-):
-    """Stream chat responses using SSE.
-    
-    Args:
-        query: User query string
-        thread_id: UUID for conversation thread
-        
-    Returns:
-        StreamingResponse with SSE events
-        
-    Raises:
-        HTTPException: 400 if thread_id is invalid UUID
-    """
-    
-    # Validate thread_id is a valid UUID
-    try:
-        uuid.UUID(thread_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid thread_id format")
-    
-    async def event_generator():
-        """Generate SSE events from agent stream."""
-        try:
-            # Create config with thread_id
-            config_dict = {
-                "configurable": {"thread_id": thread_id}
-            }
-            
-            # Create input
-            input_message = {"messages": [HumanMessage(content=query)]}
-            
-            # Stream events
-            async for event in agent.astream_events(input_message, config_dict, version="v1"):
-                event_type = event.get("event")
-                
-                # Tool call event
-                if event_type == "on_chat_model_stream":
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk and hasattr(chunk, "tool_calls") and chunk.tool_calls:
-                        for tool_call in chunk.tool_calls:
-                            yield f"event: tool_call\n"
-                            yield f"data: {json.dumps({'tool': tool_call['name'], 'query': tool_call['args']})}\n\n"
-                
-                # Token streaming
-                if event_type == "on_chat_model_stream":
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        yield f"event: token\n"
-                        yield f"data: {json.dumps({'text': chunk.content})}\n\n"
-            
-            # Done event
-            yield f"event: done\n"
-            yield f"data: {json.dumps({'finish_reason': 'stop'})}\n\n"
-        
-        except Exception as e:
-            yield f"event: error\n"
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
+    query: str = Query(..., min_length=1, max_length=config.MAX_QUERY_LENGTH),
+    thread_id: str = Query(..., min_length=1),
+) -> StreamingResponse:
+    """Stream agent responses as structured SSE events."""
+    agent = getattr(app.state, "agent", None)
+    if agent is None:
+        raise AppError(
+            message="Agent is not initialized yet.",
+            code="AGENT_NOT_READY",
+            status_code=503,
+        )
+
+    event_stream = stream_chat_events(agent=agent, query=query, thread_id=thread_id)
     return StreamingResponse(
-        event_generator(),
+        event_stream,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+            "X-Accel-Buffering": "no",
+        },
     )
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+
+@app.get("/health", response_model=SuccessResponse)
+async def health_check() -> SuccessResponse:
+    """Report backend health status for uptime checks."""
+    data = HealthData(service="docintel-backend", version=config.APP_VERSION)
+    return SuccessResponse(data=data.model_dump())
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=config.BACKEND_PORT, reload=True)
