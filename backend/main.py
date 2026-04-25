@@ -47,9 +47,17 @@ limiter = Limiter(key_func=get_remote_address)
 async def lifespan(app: FastAPI):
     """Initialize runtime dependencies and validate startup configuration."""
     import time
+    import os
     start_time = time.time()
     
     logger.info("application_startup_started", version=config.APP_VERSION)
+    
+    # Set HuggingFace environment variables early to prevent re-downloads
+    os.environ.setdefault('HF_HUB_DISABLE_TELEMETRY', '1')
+    os.environ.setdefault('TRANSFORMERS_OFFLINE', '0')
+    logger.info("huggingface_cache_settings_applied", 
+               telemetry_disabled=True,
+               offline_mode=False)
     
     try:
         # Step 1: Validate configuration
