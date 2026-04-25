@@ -258,6 +258,10 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
     import os
     logger = structlog.get_logger("docintel.ingestion")
     
+    # Disable HuggingFace telemetry and set offline mode if models are cached
+    os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+    os.environ['TRANSFORMERS_OFFLINE'] = '0'  # Allow downloads but use cache first
+    
     # Set Tesseract path for Windows - add to PATH so subprocess can find it
     if os.name == 'nt':
         tesseract_dir = r"C:\Program Files\Tesseract-OCR"
