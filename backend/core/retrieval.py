@@ -168,3 +168,53 @@ def ensure_document_exists(chroma_client: Any, source_file: str) -> None:
         status_code=404,
         details={"file": source_file},
     )
+
+
+def retrieve_comprehensive_evidence(
+    chroma_client: Any,
+    source_file: str,
+    max_chunks: int = 20,
+) -> List[Dict[str, Any]]:
+    """
+    Retrieve diverse, high-quality chunks covering all contract aspects.
+    Uses strategic queries to ensure comprehensive coverage.
+    
+    Args:
+        chroma_client: ChromaDB client
+        source_file: Document filename to retrieve from
+        max_chunks: Maximum number of chunks to return (default 20)
+    
+    Returns:
+        List of deduplicated chunks with diverse contract coverage
+    """
+    # Strategic queries covering all major contract aspects
+    comprehensive_queries = [
+        "parties names effective date commencement",
+        "term duration period renewal automatic",
+        "payment fees amount compensation invoice schedule",
+        "termination notice cause convenience breach",
+        "liability indemnification limitation cap exclusion",
+        "confidentiality proprietary information disclosure",
+        "intellectual property ownership rights license",
+        "governing law jurisdiction venue arbitration",
+        "warranties representations disclaimers as-is",
+        "assignment transfer subcontracting delegation",
+    ]
+    
+    # Retrieve with higher n_results to ensure diversity
+    all_items = retrieve_for_queries(
+        chroma_client,
+        comprehensive_queries,
+        source_file,
+        n_results_each=3,
+        max_total=max_chunks,
+    )
+    
+    logger.info(
+        "comprehensive_evidence_retrieved",
+        source_file=source_file,
+        chunks_retrieved=len(all_items),
+        max_chunks=max_chunks,
+    )
+    
+    return all_items

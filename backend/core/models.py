@@ -159,6 +159,143 @@ class DocumentAnalysisData(BaseModel):
     clauses: List[ClauseNode] = Field(default_factory=list)
 
 
+class UnifiedDocumentAnalysis(BaseModel):
+    """
+    Single comprehensive analysis output from one LLM call.
+    Combines summary, classification, extraction, risk, and missing clauses.
+    """
+    
+    # Executive Summary
+    executive_summary: List[str] = Field(
+        ..., 
+        min_length=3, 
+        max_length=5,
+        description="3-5 bullet points summarizing key contract terms"
+    )
+    
+    # Classification
+    contract_type: Literal["NDA", "Lease", "Freelance Agreement", "Other"] = Field(
+        ...,
+        description="Primary contract type classification"
+    )
+    classification_confidence: float = Field(
+        ..., 
+        ge=0.0, 
+        le=1.0,
+        description="Confidence in contract type classification"
+    )
+    classification_rationale: str = Field(
+        ..., 
+        min_length=1, 
+        max_length=1200,
+        description="Brief explanation of classification reasoning"
+    )
+    
+    # Extracted Fields - now with confidence scores
+    parties: Optional[str] = Field(default=None, max_length=2000)
+    parties_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    effective_date: Optional[str] = Field(default=None, max_length=2000)
+    effective_date_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    term: Optional[str] = Field(default=None, max_length=2000)
+    term_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    renewal: Optional[str] = Field(default=None, max_length=2000)
+    renewal_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    termination_for_convenience: Optional[str] = Field(default=None, max_length=2000)
+    termination_for_convenience_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    termination_for_cause: Optional[str] = Field(default=None, max_length=2000)
+    termination_for_cause_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    notice_period: Optional[str] = Field(default=None, max_length=2000)
+    notice_period_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    payment_amount: Optional[str] = Field(default=None, max_length=2000)
+    payment_amount_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    payment_schedule: Optional[str] = Field(default=None, max_length=2000)
+    payment_schedule_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    late_fees: Optional[str] = Field(default=None, max_length=2000)
+    late_fees_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    currency: Optional[str] = Field(default=None, max_length=2000)
+    currency_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    governing_law: Optional[str] = Field(default=None, max_length=2000)
+    governing_law_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    jurisdiction: Optional[str] = Field(default=None, max_length=2000)
+    jurisdiction_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    arbitration: Optional[str] = Field(default=None, max_length=2000)
+    arbitration_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    confidentiality: Optional[str] = Field(default=None, max_length=2000)
+    confidentiality_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    non_disparagement: Optional[str] = Field(default=None, max_length=2000)
+    non_disparagement_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    non_compete: Optional[str] = Field(default=None, max_length=2000)
+    non_compete_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    ip_ownership: Optional[str] = Field(default=None, max_length=2000)
+    ip_ownership_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    license_grant: Optional[str] = Field(default=None, max_length=2000)
+    license_grant_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    assignment: Optional[str] = Field(default=None, max_length=2000)
+    assignment_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    subcontracting: Optional[str] = Field(default=None, max_length=2000)
+    subcontracting_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    indemnification: Optional[str] = Field(default=None, max_length=2000)
+    indemnification_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    limitation_of_liability: Optional[str] = Field(default=None, max_length=2000)
+    limitation_of_liability_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    warranties: Optional[str] = Field(default=None, max_length=2000)
+    warranties_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    insurance: Optional[str] = Field(default=None, max_length=2000)
+    insurance_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    force_majeure: Optional[str] = Field(default=None, max_length=2000)
+    force_majeure_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    data_protection: Optional[str] = Field(default=None, max_length=2000)
+    data_protection_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    audit_rights: Optional[str] = Field(default=None, max_length=2000)
+    audit_rights_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    change_control: Optional[str] = Field(default=None, max_length=2000)
+    change_control_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    signature_block: Optional[str] = Field(default=None, max_length=2000)
+    signature_block_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    
+    # Risk Assessment
+    risk_overall_score: int = Field(..., ge=0, le=100, description="Overall risk score 0-100")
+    risk_level: Literal["green", "yellow", "red"] = Field(..., description="Risk level indicator")
+    risk_rationale: str = Field(..., min_length=1, max_length=2000, description="Risk assessment reasoning")
+    risk_red_flags: List[RiskFlag] = Field(default_factory=list, description="Identified risk factors")
+    risk_recommendations: List[str] = Field(default_factory=list, max_length=10, description="Risk mitigation recommendations")
+    
+    # Missing Clauses
+    missing_clauses: List[MissingClause] = Field(
+        default_factory=list,
+        description="Checklist of expected protections and their presence"
+    )
+
+
 class RewriteClauseRequest(BaseModel):
     """Request payload for generating a rewritten clause."""
 
