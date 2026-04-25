@@ -1,6 +1,6 @@
 # DocIntel — AI-Powered Legal Document Intelligence
 
-An enterprise-grade legal document analysis system. Upload PDF contracts, ask natural-language questions, and receive citation-grounded answers powered by a LangGraph agent with semantic search.
+An enterprise-grade legal document analysis system. Upload PDF or Word (DOCX) contracts, generate an executive summary + structured extraction + risk scoring, and ask natural-language questions with citation-grounded answers powered by a LangGraph agent with semantic search.
 
 ## Tech Stack
 
@@ -92,11 +92,16 @@ The app will be available at:
 
 ## Usage
 
-1. **Upload a contract** — Drag-and-drop a PDF into the left panel (or click Browse)
-   - Supports both text-based and scanned PDFs
+1. **Upload a contract** — Drag-and-drop a PDF or DOCX into the left panel (or click Browse)
+   - Supports text-based PDFs, scanned PDFs (optional OCR), and digital DOCX files
    - For scanned PDFs, see [OCR Setup Guide](docs/OCR_SETUP.md)
-2. **Ask questions** — Type a question in the chat panel and press Enter
-3. **Get cited answers** — The agent searches the document, streams its response, and cites every claim with `[Page X]` references
+2. **Generate analysis** — Click **Generate Analysis** to produce:
+   - 3–5 bullet executive summary
+   - Contract classification (NDA / Lease / Freelance / Other)
+   - Structured field extraction + risk score + missing protections
+   - Downloadable PDF report (requires `reportlab`)
+3. **Ask questions** — Type a question in the chat panel and press Enter
+4. **Get cited answers** — The agent searches the document, streams its response, and cites every claim with `[Page X]` references
 4. **Conversation persists** — Refresh the browser or restart the backend; your thread survives via SQLite
 
 ## Configuration

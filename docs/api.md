@@ -35,17 +35,18 @@ Health check for uptime monitoring.
 
 ### `POST /api/upload_contract`
 
-Upload and index a PDF contract into the vector database.
+Upload and index a contract document (PDF or DOCX) into the vector database.
 
 **Content-Type:** `multipart/form-data`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file` | File | ✅ | PDF file (max 20 MB) |
+| `file` | File | ✅ | PDF or DOCX file (max 20 MB) |
 
 **Validation Rules:**
-- MIME type must be `application/pdf`
-- File must begin with `%PDF-` magic bytes
+- MIME type must be `application/pdf` or `application/vnd.openxmlformats-officedocument.wordprocessingml.document`
+- PDF files must begin with `%PDF-` magic bytes
+- DOCX files must be a valid ZIP container with required Word XML entries
 - File size must not exceed `MAX_FILE_SIZE_MB` (default: 20 MB)
 
 **Success Response** `201 Created`:
@@ -66,11 +67,14 @@ Upload and index a PDF contract into the vector database.
 
 | Status | Code | When |
 |--------|------|------|
-| `400` | `INVALID_MIME_TYPE` | File is not a PDF |
+| `400` | `INVALID_MIME_TYPE` | File is not a PDF or DOCX |
 | `400` | `INVALID_PDF_SIGNATURE` | File bytes don't match PDF magic header |
+| `400` | `INVALID_DOCX_SIGNATURE` | File bytes are not a valid DOCX container |
 | `413` | `FILE_TOO_LARGE` | File exceeds size limit |
-| `422` | `EMPTY_DOCUMENT` | PDF contains no extractable text |
+| `422` | `EMPTY_DOCUMENT` | Document contains no extractable text |
+| `422` | `OCR_NOT_AVAILABLE` | Scanned PDF requires OCR but Tesseract isn't available |
 | `500` | `PDF_PARSE_FAILED` | Unstructured failed to parse the PDF |
+| `500` | `DOCX_PARSE_FAILED` | Unstructured failed to parse the DOCX |
 
 **cURL Example:**
 
@@ -91,6 +95,7 @@ Stream agent responses as Server-Sent Events.
 |-------|------|----------|-------------|-------------|
 | `query` | string | ✅ | 1–2000 chars | Natural language question |
 | `thread_id` | string | ✅ | Valid UUID | Conversation thread identifier |
+| `file` | string | ❌ | 1–255 chars | Scope retrieval to a specific uploaded filename |
 
 **Response:** `200 OK` with `Content-Type: text/event-stream`
 
@@ -186,9 +191,12 @@ All error responses return:
 |------|------|-------------|
 | `INVALID_MIME_TYPE` | 400 | Uploaded file is not a PDF |
 | `INVALID_PDF_SIGNATURE` | 400 | File bytes don't start with `%PDF-` |
+| `INVALID_DOCX_SIGNATURE` | 400 | File bytes aren't a valid DOCX |
 | `FILE_TOO_LARGE` | 413 | File exceeds configured size limit |
 | `EMPTY_DOCUMENT` | 422 | PDF contains no extractable text |
+| `OCR_NOT_AVAILABLE` | 422 | OCR required but unavailable |
 | `PDF_PARSE_FAILED` | 500 | Unstructured library failed to parse |
+| `DOCX_PARSE_FAILED` | 500 | Unstructured library failed to parse |
 | `UPLOAD_PROCESSING_FAILED` | 500 | Generic upload pipeline failure |
 | `CHUNKING_FAILED` | 500 | Failed to create chunks from PDF |
 | `EMPTY_QUERY` | 400 | Chat query is blank after trimming |
@@ -198,3 +206,59 @@ All error responses return:
 | `VALIDATION_ERROR` | 422 | Request body failed Pydantic validation |
 | `HTTP_ERROR` | varies | Generic HTTP error |
 | `INTERNAL_SERVER_ERROR` | 500 | Unhandled exception (details hidden) |
+
+---
+
+### `POST /api/analyze_document`
+
+Run executive summary, contract classification, structured field extraction, risk scoring, and missing-clause checks.
+
+**Content-Type:** `application/json`
+
+**Body:**
+
+```json
+{ "file": "contract.pdf" }
+```
+
+**Success Response** `200 OK`:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "file": "contract.pdf",
+    "executive_summary": ["...", "...", "..."],
+    "classification": { "contract_type": "NDA", "confidence": 0.82, "rationale": "...", "evidence": [] },
+    "extracted_fields": [],
+    "risk": { "overall_score": 42, "level": "yellow", "rationale": "...", "red_flags": [], "recommendations": [] },
+    "missing_clauses": []
+  }
+}
+```
+
+---
+
+### `POST /api/rewrite_clause`
+
+Generate a proposed rewritten clause ("Fix This").
+
+**Content-Type:** `application/json`
+
+**Body:**
+
+```json
+{ "file": "contract.pdf", "clause_text": "....", "goal": "Optional goal" }
+```
+
+---
+
+### `GET /api/report_pdf`
+
+Download a PDF report of the analysis.
+
+**Query Parameters:**
+
+| Param | Type | Required |
+|-------|------|----------|
+| `file` | string | ✅ |

@@ -94,8 +94,11 @@ Key settings:
 
 ## API Endpoints
 
-- `POST /api/upload_contract` - Upload and index PDF
+- `POST /api/upload_contract` - Upload and index PDF or DOCX
+- `POST /api/analyze_document` - Summary + extraction + risk scoring
 - `GET /api/chat/stream` - Stream agent responses (SSE)
+- `POST /api/rewrite_clause` - Generate rewritten clause proposal
+- `GET /api/report_pdf` - Download PDF report (requires `reportlab`)
 - `GET /health` - Health check with sub-system status
 
 See `../docs/api.md` for full API documentation.
