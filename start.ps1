@@ -24,7 +24,18 @@ $backendCmd = @"
 Set-Location '$ProjectRoot\backend'
 & '.\venv\Scripts\Activate.ps1'
 Write-Host ''
-Write-Host '  Backend starting on http://localhost:8000' -ForegroundColor Green
+Write-Host '  ========================================' -ForegroundColor Cyan
+Write-Host '  DocIntel Backend Starting...' -ForegroundColor Green
+Write-Host '  ========================================' -ForegroundColor Cyan
+Write-Host ''
+Write-Host '  NOTE: First startup may take 30-60 seconds while:' -ForegroundColor Yellow
+Write-Host '    - Downloading embedding model (~80MB)' -ForegroundColor DarkGray
+Write-Host '    - Initializing ChromaDB' -ForegroundColor DarkGray
+Write-Host '    - Connecting to LLM provider' -ForegroundColor DarkGray
+Write-Host ''
+Write-Host '  Subsequent startups will be much faster!' -ForegroundColor Green
+Write-Host ''
+Write-Host '  Server will be available at: http://localhost:8000' -ForegroundColor Cyan
 Write-Host '  Press Ctrl+C to stop.' -ForegroundColor DarkGray
 Write-Host ''
 python main.py

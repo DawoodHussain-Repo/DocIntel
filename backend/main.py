@@ -46,12 +46,18 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize runtime dependencies and validate startup configuration."""
+    import time
+    start_time = time.time()
+    
     logger.info("application_startup_started", version=config.APP_VERSION)
     
     try:
+        # Step 1: Validate configuration
         config.validate()
         logger.info("configuration_validated")
         
+        # Step 2: Initialize ChromaDB
+        logger.info("chromadb_initialization_started")
         from chromadb.config import Settings
         app.state.chroma_client = chromadb.PersistentClient(
             path=str(config.CHROMA_PERSIST_DIR),
@@ -59,15 +65,30 @@ async def lifespan(app: FastAPI):
         )
         logger.info("chromadb_initialized", persist_dir=str(config.CHROMA_PERSIST_DIR))
         
+        # Step 3: Initialize SQLite checkpointer
+        logger.info("checkpointer_initialization_started")
         async with AsyncSqliteSaver.from_conn_string(
             str(config.SQLITE_DB_PATH)
         ) as checkpointer:
             set_checkpointer(checkpointer)
             logger.info("checkpointer_initialized", db_path=str(config.SQLITE_DB_PATH))
             
-            # Initialize agent service (will be created on-demand via dependency injection)
-            logger.info("agent_service_ready")
-            logger.info("application_startup_completed")
+            # Step 4: Pre-warm embedding model (this can take 10-30s on first run)
+            logger.info("embedding_model_preload_started", 
+                       model=config.EMBEDDING_MODEL_NAME,
+                       note="First run may download ~80MB model from HuggingFace")
+            from core.embeddings import get_embedding_model
+            _ = get_embedding_model()
+            logger.info("embedding_model_preload_completed")
+            
+            # Step 5: Pre-warm LLM connection
+            logger.info("llm_preload_started", provider=config.LLM_PROVIDER)
+            _ = get_llm()
+            logger.info("llm_preload_completed")
+            
+            elapsed = time.time() - start_time
+            logger.info("application_startup_completed", 
+                       startup_time_seconds=round(elapsed, 2))
             
             yield
             
