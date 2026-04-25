@@ -160,12 +160,19 @@ def _evidence_matches_clause(clause: ClauseNode, risk: RiskReport) -> str:
 
 
 def build_clause_ast(chunks: Iterable[DocumentChunk], risk: RiskReport) -> List[ClauseNode]:
-    """Build a clause tree from ordered chunks and annotate it with risk levels."""
+    """
+    Build a clause tree from ordered chunks and annotate it with risk levels.
+    Filters out title blocks, tables, and non-substantive sections.
+    """
     clauses: List[ClauseNode] = []
 
     for section in group_document_sections(chunks):
         text = section.text
         if not text:
+            continue
+
+        # Filter out title blocks and tables (non-substantive content)
+        if _is_title_block_or_table(text, section.heading):
             continue
 
         number, title = _parse_heading(section.heading, text)
@@ -191,3 +198,74 @@ def build_clause_ast(chunks: Iterable[DocumentChunk], risk: RiskReport) -> List[
         clauses.append(clause)
 
     return clauses
+
+
+def _is_title_block_or_table(text: str, heading: str) -> bool:
+    """
+    Detect if a section is a title block, table, or other non-substantive content.
+    
+    Filters out:
+    - Title blocks (all caps, short, no paragraph text)
+    - Tables (KEY DATES, FINANCIAL TERMS, etc.)
+    - Signature blocks with just underscores
+    - Sections without paragraph-length body text
+    """
+    text_stripped = text.strip()
+    heading_stripped = heading.strip()
+    
+    # Check if heading is all caps (likely title block)
+    if heading_stripped and heading_stripped.isupper() and len(heading_stripped) > 10:
+        # Check if it's a common title pattern
+        title_patterns = [
+            "AGREEMENT",
+            "CONTRACT",
+            "KEY DATES",
+            "FINANCIAL TERMS",
+            "SUMMARY",
+            "TABLE",
+        ]
+        if any(pattern in heading_stripped for pattern in title_patterns):
+            # Only filter if text is short (< 200 chars) or mostly non-text
+            if len(text_stripped) < 200 or _is_mostly_non_text(text_stripped):
+                return True
+    
+    # Check if text is mostly underscores, dashes, or formatting characters
+    if _is_mostly_non_text(text_stripped):
+        return True
+    
+    # Check if text lacks paragraph-length content
+    # A real clause should have at least one sentence of 50+ characters
+    sentences = [s.strip() for s in text_stripped.split('.') if s.strip()]
+    has_substantive_sentence = any(len(s) > 50 for s in sentences)
+    
+    if not has_substantive_sentence:
+        return True
+    
+    # Check if it's a table (lots of newlines, short lines, numbers/dates)
+    lines = [line.strip() for line in text_stripped.split('\n') if line.strip()]
+    if len(lines) > 3:
+        avg_line_length = sum(len(line) for line in lines) / len(lines)
+        # Tables have short lines (< 40 chars average)
+        if avg_line_length < 40:
+            # Check if it has table-like content (dates, numbers, colons)
+            table_indicators = sum(1 for line in lines if ':' in line or re.search(r'\d{1,2}/\d{1,2}/\d{2,4}', line))
+            if table_indicators > len(lines) * 0.5:  # More than 50% of lines look like table rows
+                return True
+    
+    return False
+
+
+def _is_mostly_non_text(text: str) -> bool:
+    """Check if text is mostly formatting characters (underscores, dashes, etc.)."""
+    if not text:
+        return True
+    
+    # Count non-text characters
+    non_text_chars = sum(1 for c in text if c in '_-=*#|+')
+    total_chars = len(text.replace(' ', '').replace('\n', ''))
+    
+    if total_chars == 0:
+        return True
+    
+    # If more than 30% is formatting characters, it's not substantive text
+    return (non_text_chars / total_chars) > 0.3

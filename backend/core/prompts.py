@@ -220,6 +220,36 @@ ANALYSIS REQUIREMENTS:
    - Determine risk level: green (0-33), yellow (34-66), red (67-100)
    - Identify specific red flags with severity (low/medium/high)
    - Provide 3-5 practical recommendations
+   
+   **SEVERITY ESCALATION RULES:**
+   - **HIGH severity** if any of:
+     * Unlimited liability or no liability cap
+     * IP rights transfer on payment default
+     * Automatic termination without cure period
+     * One-sided indemnification (only one party indemnifies)
+     * No limitation of liability clause
+     * Liability cap < 3 months of contract value
+     * Payment terms > 60 days
+   
+   - **MEDIUM severity** if:
+     * Liability cap < 12 months of contract value
+     * Termination for convenience without notice
+     * Broad confidentiality with no exceptions
+     * Non-compete > 12 months
+     * Payment terms 30-60 days
+   
+   - **LOW severity** if:
+     * Standard commercial terms
+     * Balanced obligations
+     * Reasonable liability caps
+     * Fair termination provisions
+   
+   **CRITICAL FINDINGS TO FLAG:**
+   - IP reversion clauses tied to payment defaults
+   - Liability caps with short time periods (< 6 months)
+   - Automatic rights transfers on breach
+   - Unilateral amendment rights
+   - Survival clauses that outlive the agreement unreasonably
 
 5. MISSING CLAUSES
    Based on contract type, check for expected protections:
@@ -229,5 +259,10 @@ ANALYSIS REQUIREMENTS:
    - For Other: Termination, Payment terms, Governing law
 
 Mark each as present=true/false with brief notes.
+
+**IMPORTANT:** 
+- If present=false, the evidence list will be EMPTY (you can't provide evidence for something that doesn't exist)
+- The notes field should explain WHY it's missing or what was found instead
+- For present=true, provide evidence snippets showing where the clause appears
 
 Provide your complete analysis now."""
