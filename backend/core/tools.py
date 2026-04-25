@@ -1,6 +1,6 @@
 """ChromaDB tools for legal document search."""
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import structlog
 from langchain.tools import tool
@@ -25,6 +25,19 @@ def _sanitize_query(query: str) -> str:
     return sanitized
 
 
+def _sanitize_source_file(source_file: Optional[str]) -> Optional[str]:
+    """Sanitize a filename used for per-document filtering."""
+    if not source_file:
+        return None
+
+    sanitized = source_file.replace("\x00", "").strip()
+    sanitized = sanitized.split("/")[-1].split("\\")[-1]
+    sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", sanitized)
+    if not sanitized:
+        return None
+    return sanitized[:255]
+
+
 def _format_query_results(
     documents: List[str],
     metadatas: List[Dict[str, Any]],
@@ -47,7 +60,7 @@ def create_search_legal_clauses_tool(chroma_client: Any):
     """Build a search tool with injected dependencies for deterministic behavior."""
 
     @tool
-    def search_legal_clauses(query: str) -> str:
+    def search_legal_clauses(query: str, source_file: Optional[str] = None) -> str:
         """Search indexed legal documents and return top matching clauses.
 
         The tool returns up to SEARCH_RESULT_LIMIT matching chunks with page
@@ -57,11 +70,13 @@ def create_search_legal_clauses_tool(chroma_client: Any):
 
         Args:
             query: User query for contract clause retrieval.
+            source_file: Optional uploaded filename to scope search results.
 
         Returns:
             String payload with formatted clause excerpts or failure text.
         """
         sanitized_query = _sanitize_query(query)
+        sanitized_source_file = _sanitize_source_file(source_file)
         
         if not sanitized_query:
             logger.warning("tool_search_empty_query")
@@ -74,10 +89,17 @@ def create_search_legal_clauses_tool(chroma_client: Any):
         
         try:
             collection = chroma_client.get_collection("legal_docs")
-            results = collection.query(
-                query_texts=[sanitized_query],
-                n_results=config.SEARCH_RESULT_LIMIT,
-            )
+            if sanitized_source_file:
+                results = collection.query(
+                    query_texts=[sanitized_query],
+                    n_results=config.SEARCH_RESULT_LIMIT,
+                    where={"source_file": sanitized_source_file},
+                )
+            else:
+                results = collection.query(
+                    query_texts=[sanitized_query],
+                    n_results=config.SEARCH_RESULT_LIMIT,
+                )
 
             documents = results.get("documents", [[]])
             metadatas = results.get("metadatas", [[]])

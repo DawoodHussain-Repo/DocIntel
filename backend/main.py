@@ -11,17 +11,29 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from core.checkpointer import set_checkpointer
 from core.config import config
 from core.errors import AppError
-from core.models import ErrorResponse, HealthData, SuccessResponse
+from core.models import (
+    AnalyzeDocumentRequest,
+    DocumentAnalysisData,
+    ErrorResponse,
+    HealthData,
+    RewriteClauseData,
+    RewriteClauseRequest,
+    SuccessResponse,
+)
 from dependencies.agent import get_agent_service
+from dependencies.llm import get_llm
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from utils.logger import setup_logging
 from api.middleware import LoggingMiddleware
 from services.chat_service import stream_chat_events
+from services.analysis_service import analyze_document
+from services.rewrite_service import rewrite_clause
+from services.report_service import render_analysis_report_pdf
 from services.upload_service import process_contract_upload
 
 
@@ -186,7 +198,7 @@ async def unhandled_error_handler(_: Request, error: Exception) -> JSONResponse:
 @app.post("/api/upload_contract", response_model=SuccessResponse, status_code=201)
 @limiter.limit("10/minute")
 async def upload_contract(request: Request, file: UploadFile = File(...)) -> SuccessResponse:
-    """Validate and index an uploaded contract PDF."""
+    """Validate and index an uploaded contract document (PDF or DOCX)."""
     logger.info(
         "upload_started",
         filename=file.filename,
@@ -207,12 +219,62 @@ async def upload_contract(request: Request, file: UploadFile = File(...)) -> Suc
     return SuccessResponse(data=result.model_dump())
 
 
+@app.post("/api/analyze_document", response_model=SuccessResponse)
+@limiter.limit("15/minute")
+async def analyze_contract(request: Request, payload: AnalyzeDocumentRequest) -> SuccessResponse:
+    """Run summary, classification, extraction, and risk analysis for a single indexed document."""
+    llm = get_llm()
+    analysis: DocumentAnalysisData = await analyze_document(
+        llm=llm,
+        chroma_client=request.app.state.chroma_client,
+        source_file=payload.file,
+    )
+    return SuccessResponse(data=analysis.model_dump())
+
+
+@app.post("/api/rewrite_clause", response_model=SuccessResponse)
+@limiter.limit("20/minute")
+async def rewrite_contract_clause(request: Request, payload: RewriteClauseRequest) -> SuccessResponse:
+    """Generate a proposed rewritten clause for negotiation."""
+    llm = get_llm()
+    result: RewriteClauseData = await rewrite_clause(
+        llm=llm,
+        chroma_client=request.app.state.chroma_client,
+        source_file=payload.file,
+        clause_text=payload.clause_text,
+        goal=payload.goal,
+    )
+    return SuccessResponse(data=result.model_dump())
+
+
+@app.get("/api/report_pdf")
+@limiter.limit("10/minute")
+async def download_report_pdf(request: Request, file: str = Query(..., min_length=1, max_length=255)) -> Response:
+    """Download a PDF report for the analyzed contract."""
+    llm = get_llm()
+    analysis: DocumentAnalysisData = await analyze_document(
+        llm=llm,
+        chroma_client=request.app.state.chroma_client,
+        source_file=file,
+    )
+    pdf_bytes = render_analysis_report_pdf(analysis)
+    safe_name = file.replace("\\", "_").replace("/", "_")
+    if not safe_name.lower().endswith(".pdf"):
+        safe_name = f"{safe_name}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=\"docintel-report-{safe_name}\""},
+    )
+
+
 @app.get("/api/chat/stream")
 @limiter.limit("30/minute")
 async def chat_stream(
     request: Request,
     query: str = Query(..., min_length=1, max_length=config.MAX_QUERY_LENGTH),
     thread_id: str = Query(..., min_length=1),
+    file: str | None = Query(default=None, min_length=1, max_length=255),
 ) -> StreamingResponse:
     """Stream agent responses as structured SSE events."""
     logger.info(
@@ -228,6 +290,7 @@ async def chat_stream(
         agent_service=agent_service,
         query=query,
         thread_id=thread_id,
+        active_document=file,
     )
     return StreamingResponse(
         event_stream,

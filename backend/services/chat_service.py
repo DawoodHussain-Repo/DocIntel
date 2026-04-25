@@ -84,6 +84,7 @@ async def stream_chat_events(
     agent_service: AgentService,
     query: str,
     thread_id: str,
+    active_document: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Yield tool_call, token, and done events for a chat query."""
     sanitized_query = _sanitize_query_input(query)
@@ -103,50 +104,48 @@ async def stream_chat_events(
     token_count = 0
     tool_call_count = 0
 
-    try:
-        # Wrap agent invocation with timeout
-        async def _stream_with_timeout():
-            nonlocal token_count, tool_call_count
-            
-            async for event in agent_service.stream(
-                sanitized_query,
-                validated_thread_id,
-                run_id,
-            ):
-                if event.get("event") != "on_chat_model_stream":
-                    continue
+    async def _stream_agent_events() -> AsyncGenerator[str, None]:
+        nonlocal token_count, tool_call_count
 
-                chunk = event.get("data", {}).get("chunk")
-
-                if chunk and hasattr(chunk, "tool_calls") and chunk.tool_calls:
-                    for tool_call in chunk.tool_calls:
-                        tool_call_count += 1
-                        tool_name = tool_call.get("name", "unknown_tool")
-                        
-                        logger.info(
-                            "tool_call_invoked",
-                            tool_name=tool_name,
-                            tool_call_index=tool_call_count,
-                        )
-                        
-                        yield _format_sse_event(
-                            "tool_call",
-                            {
-                                "tool": tool_name,
-                                "query": str(tool_call.get("args", {})),
-                            },
-                        )
-
-                token_text = _extract_text(chunk)
-                if token_text:
-                    token_count += 1
-                    yield _format_sse_event("token", {"text": token_text})
-        
-        async for event in asyncio.wait_for(
-            _stream_with_timeout(),
-            timeout=config.AGENT_TIMEOUT_SECONDS
+        async for event in agent_service.stream(
+            sanitized_query,
+            validated_thread_id,
+            run_id,
+            active_document=active_document,
         ):
-            yield event
+            if event.get("event") != "on_chat_model_stream":
+                continue
+
+            chunk = event.get("data", {}).get("chunk")
+
+            if chunk and hasattr(chunk, "tool_calls") and chunk.tool_calls:
+                for tool_call in chunk.tool_calls:
+                    tool_call_count += 1
+                    tool_name = tool_call.get("name", "unknown_tool")
+
+                    logger.info(
+                        "tool_call_invoked",
+                        tool_name=tool_name,
+                        tool_call_index=tool_call_count,
+                    )
+
+                    yield _format_sse_event(
+                        "tool_call",
+                        {
+                            "tool": tool_name,
+                            "query": str(tool_call.get("args", {})),
+                        },
+                    )
+
+            token_text = _extract_text(chunk)
+            if token_text:
+                token_count += 1
+                yield _format_sse_event("token", {"text": token_text})
+
+    try:
+        async with asyncio.timeout(config.AGENT_TIMEOUT_SECONDS):
+            async for event in _stream_agent_events():
+                yield event
 
         logger.info(
             "agent_stream_completed",
@@ -188,7 +187,7 @@ async def stream_chat_events(
         
         done_payload = StreamDoneData(
             finish_reason="error",
-            error=f"Streaming failed: {error}",
+            error="Streaming failed due to an internal server error.",
         ).model_dump()
         done_payload["run_id"] = run_id
         yield _format_sse_event("done", done_payload)
