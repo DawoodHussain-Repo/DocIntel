@@ -266,8 +266,11 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
             infer_table_structure=False,
         )
         
-        # Check if we got any text
-        valid_elements = [element for element in elements if getattr(element, "text", "")]
+        # Check if we got any text - properly check for non-empty text content
+        valid_elements = [
+            element for element in elements 
+            if getattr(element, "text", "").strip()
+        ]
         
         if valid_elements:
             logger.info("pdf_parsing_success", strategy="fast", element_count=len(valid_elements))
@@ -283,7 +286,10 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
                     extract_images_in_pdf=True,
                     infer_table_structure=True,
                 )
-                valid_elements = [element for element in elements if getattr(element, "text", "")]
+                valid_elements = [
+                    element for element in elements 
+                    if getattr(element, "text", "").strip()
+                ]
                 
                 if valid_elements:
                     logger.info("pdf_parsing_success", strategy="hi_res", element_count=len(valid_elements))
@@ -340,7 +346,10 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
     if has_headings:
         chunks = chunk_by_headings(valid_elements, filename)
     else:
-        full_text = "\n".join((element.text or "") for element in valid_elements)
+        full_text = "\n".join(
+            (getattr(element, "text", "") or "").strip() 
+            for element in valid_elements
+        )
         chunks = semantic_chunk_fallback(full_text, filename)
 
     if not chunks:
@@ -390,7 +399,10 @@ def process_docx(file_path: str, filename: str, chroma_client: Any) -> Dict[str,
     try:
         logger.info("docx_parsing_attempt", filename=filename)
         elements = partition_docx(file_path)
-        valid_elements = [element for element in elements if getattr(element, "text", "")]
+        valid_elements = [
+            element for element in elements 
+            if getattr(element, "text", "").strip()
+        ]
         if not valid_elements:
             raise AppError(
                 message="The uploaded DOCX does not contain extractable text.",
@@ -417,7 +429,10 @@ def process_docx(file_path: str, filename: str, chroma_client: Any) -> Dict[str,
         for chunk in chunks:
             chunk["metadata"]["page_number"] = 1
     else:
-        full_text = "\n".join((element.text or "") for element in valid_elements)
+        full_text = "\n".join(
+            (getattr(element, "text", "") or "").strip() 
+            for element in valid_elements
+        )
         chunks = semantic_chunk_fallback(full_text, filename)
 
     if not chunks:
