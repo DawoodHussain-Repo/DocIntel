@@ -1,4 +1,6 @@
 """LLM invocation node for agent graph."""
+from typing import Any
+
 import structlog
 from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
@@ -16,12 +18,12 @@ logger = structlog.get_logger("docintel.agents.nodes.llm")
     wait=wait_exponential(multiplier=1, min=2, max=10),
     reraise=True,
 )
-async def _invoke_llm_with_retry(llm: ChatOpenAI, messages: list) -> any:
+async def _invoke_llm_with_retry(llm: ChatOpenAI, messages: list[Any]) -> Any:
     """Invoke LLM with exponential backoff retry."""
     return await llm.ainvoke(messages)
 
 
-async def llm_node(state: AgentState, llm: ChatOpenAI) -> dict:
+async def llm_node(state: AgentState, llm: ChatOpenAI) -> dict[str, Any]:
     """
     Call LLM with system prompt and conversation history.
     
@@ -51,8 +53,12 @@ async def llm_node(state: AgentState, llm: ChatOpenAI) -> dict:
     try:
         messages = state["messages"]
         
-        # Add system prompt if not present
-        if not any(isinstance(msg, SystemMessage) for msg in messages):
+        # Ensure main system prompt is present (even if other SystemMessages exist)
+        has_main_prompt = any(
+            isinstance(msg, SystemMessage) and (msg.content or "") == SYSTEM_PROMPT
+            for msg in messages
+        )
+        if not has_main_prompt:
             messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
         
         # Invoke LLM with retry
@@ -82,5 +88,5 @@ async def llm_node(state: AgentState, llm: ChatOpenAI) -> dict:
         )
         return {
             "next_step": "end",
-            "error": f"LLM invocation failed: {error}",
+            "error": "LLM invocation failed.",
         }

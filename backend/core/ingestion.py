@@ -2,15 +2,13 @@
 import hashlib
 from typing import Any, Dict, List
 
-from sentence_transformers import SentenceTransformer
 from unstructured.partition.pdf import partition_pdf
 
 from core.config import config
+from core.embeddings import get_embedding_model
 from core.errors import AppError
 
 COLLECTION_NAME = "legal_docs"
-
-embedding_model = SentenceTransformer(config.EMBEDDING_MODEL_NAME)
 
 
 class RecursiveTextSplitter:
@@ -353,7 +351,84 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
         )
 
     texts = [chunk["text"] for chunk in chunks]
-    embeddings = embedding_model.encode(texts).tolist()
+    embeddings = get_embedding_model().encode(texts).tolist()
+    doc_ids = [
+        hashlib.md5(
+            f"{filename}_{chunk['metadata']['chunk_index']}".encode("utf-8")
+        ).hexdigest()
+        for chunk in chunks
+    ]
+
+    collection = chroma_client.get_or_create_collection(COLLECTION_NAME)
+    collection.upsert(
+        ids=doc_ids,
+        documents=texts,
+        embeddings=embeddings,
+        metadatas=[chunk["metadata"] for chunk in chunks],
+    )
+
+    return {
+        "file": filename,
+        "chunks_indexed": len(chunks),
+        "collection": COLLECTION_NAME,
+    }
+
+
+def process_docx(file_path: str, filename: str, chroma_client: Any) -> Dict[str, Any]:
+    """
+    Parse, chunk, embed, and index a DOCX document in ChromaDB.
+
+    Notes:
+    - DOCX does not have stable page numbers; we keep `page_number=1` and rely on headings.
+    - Only digital text is supported (no OCR).
+    """
+    import structlog
+    from unstructured.partition.docx import partition_docx
+
+    logger = structlog.get_logger("docintel.ingestion")
+
+    try:
+        logger.info("docx_parsing_attempt", filename=filename)
+        elements = partition_docx(file_path)
+        valid_elements = [element for element in elements if getattr(element, "text", "")]
+        if not valid_elements:
+            raise AppError(
+                message="The uploaded DOCX does not contain extractable text.",
+                code="EMPTY_DOCUMENT",
+                status_code=422,
+            )
+        logger.info("docx_parsing_success", element_count=len(valid_elements))
+    except AppError:
+        raise
+    except Exception as error:
+        logger.exception("docx_parsing_failed", filename=filename, error=str(error))
+        raise AppError(
+            message=f"Failed to parse DOCX: {error}",
+            code="DOCX_PARSE_FAILED",
+            status_code=500,
+        ) from error
+
+    has_headings = any(
+        getattr(element, "category", "") in ["Title", "Header"]
+        for element in valid_elements
+    )
+    if has_headings:
+        chunks = chunk_by_headings(valid_elements, filename)
+        for chunk in chunks:
+            chunk["metadata"]["page_number"] = 1
+    else:
+        full_text = "\n".join((element.text or "") for element in valid_elements)
+        chunks = semantic_chunk_fallback(full_text, filename)
+
+    if not chunks:
+        raise AppError(
+            message="Unable to create chunks from the uploaded DOCX.",
+            code="CHUNKING_FAILED",
+            status_code=500,
+        )
+
+    texts = [chunk["text"] for chunk in chunks]
+    embeddings = get_embedding_model().encode(texts).tolist()
     doc_ids = [
         hashlib.md5(
             f"{filename}_{chunk['metadata']['chunk_index']}".encode("utf-8")

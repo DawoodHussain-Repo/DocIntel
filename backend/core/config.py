@@ -66,7 +66,10 @@ class Config:
         self.MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "20"))
         self.MAX_FILE_SIZE_BYTES = self.MAX_FILE_SIZE_MB * 1024 * 1024
         self.MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "2000"))
-        self.ALLOWED_MIME_TYPES = ["application/pdf"]
+        self.ALLOWED_MIME_TYPES = [
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ]
 
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
         self.LOG_FORMAT = os.getenv("LOG_FORMAT", "json").lower()

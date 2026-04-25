@@ -3,7 +3,7 @@ import uuid
 from typing import Any, AsyncGenerator
 
 import structlog
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.state import AgentState
 from core.config import config
@@ -37,6 +37,7 @@ class AgentService:
         user_input: str,
         thread_id: str,
         run_id: str | None = None,
+        active_document: str | None = None,
     ) -> AgentState:
         """
         Create initial state for graph execution.
@@ -52,8 +53,13 @@ class AgentService:
         if not run_id:
             run_id = str(uuid.uuid4())
         
+        messages = []
+        if active_document:
+            messages.append(SystemMessage(content=f"ACTIVE_DOCUMENT: {active_document}"))
+        messages.append(HumanMessage(content=user_input))
+
         return AgentState(
-            messages=[HumanMessage(content=user_input)],
+            messages=messages,
             run_id=run_id,
             thread_id=thread_id,
             next_step="llm",
@@ -65,6 +71,7 @@ class AgentService:
         user_input: str,
         thread_id: str,
         run_id: str | None = None,
+        active_document: str | None = None,
     ) -> AgentState:
         """
         Execute agent synchronously and return final state.
@@ -77,7 +84,7 @@ class AgentService:
         Returns:
             Final agent state
         """
-        initial_state = self._create_initial_state(user_input, thread_id, run_id)
+        initial_state = self._create_initial_state(user_input, thread_id, run_id, active_document)
         config_dict = {"configurable": {"thread_id": thread_id}}
         
         logger.info(
@@ -111,6 +118,7 @@ class AgentService:
         user_input: str,
         thread_id: str,
         run_id: str | None = None,
+        active_document: str | None = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Execute agent with streaming and yield events.
@@ -123,7 +131,7 @@ class AgentService:
         Yields:
             State updates and events from graph execution
         """
-        initial_state = self._create_initial_state(user_input, thread_id, run_id)
+        initial_state = self._create_initial_state(user_input, thread_id, run_id, active_document)
         config_dict = {"configurable": {"thread_id": thread_id}}
         
         logger.info(
