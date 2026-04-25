@@ -15,17 +15,10 @@ export function useThreadId(): string {
 
   useEffect(() => {
     const storedThreadId = sessionStorage.getItem(THREAD_STORAGE_KEY);
-    
+
     if (storedThreadId && isValidUuidV4(storedThreadId)) {
       setThreadId(storedThreadId);
       return;
-    }
-
-    if (storedThreadId) {
-      console.warn(
-        "Invalid thread ID found in storage, generating new one:",
-        storedThreadId
-      );
     }
 
     const generatedThreadId = crypto.randomUUID();

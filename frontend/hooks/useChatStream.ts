@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { streamChat } from "@/lib/api";
 import { MESSAGE_STORAGE_PREFIX } from "@/lib/config";
 import { ChatMessage, DoneEvent, ToolCallEvent } from "@/lib/types";
@@ -40,7 +40,7 @@ function appendTokenToAssistantMessage(
   });
 }
 
-export function useChatStream(threadId: string) {
+export function useChatStream(threadId: string, activeDocument: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -48,6 +48,7 @@ export function useChatStream(threadId: string) {
     null,
   );
   const [hasHydrated, setHasHydrated] = useState<boolean>(false);
+  const streamAbortController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setHasHydrated(false);
@@ -82,6 +83,8 @@ export function useChatStream(threadId: string) {
     setIsStreaming(true);
     setStreamError(null);
     setCurrentToolCall(null);
+    streamAbortController.current?.abort();
+    streamAbortController.current = new AbortController();
 
     const userMessageId = crypto.randomUUID();
     const assistantMessageId = crypto.randomUUID();
@@ -92,7 +95,7 @@ export function useChatStream(threadId: string) {
       { id: assistantMessageId, role: "assistant", content: "" },
     ]);
 
-    await streamChat(trimmedMessage, threadId, {
+    await streamChat(trimmedMessage, threadId, activeDocument, {
       onToolCall: (event: ToolCallEvent) => {
         setCurrentToolCall(event);
       },
@@ -155,10 +158,14 @@ export function useChatStream(threadId: string) {
           });
         }
       },
+    }, {
+      signal: streamAbortController.current.signal,
     });
   };
 
   const clearConversation = (): void => {
+    streamAbortController.current?.abort();
+    setIsStreaming(false);
     setMessages([]);
     setStreamError(null);
     setCurrentToolCall(null);
@@ -166,6 +173,12 @@ export function useChatStream(threadId: string) {
       sessionStorage.removeItem(getStorageKey(threadId));
     }
   };
+
+  useEffect(() => {
+    return () => {
+      streamAbortController.current?.abort();
+    };
+  }, []);
 
   return {
     messages,

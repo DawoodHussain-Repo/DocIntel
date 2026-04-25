@@ -1,10 +1,15 @@
+import { logger } from "./logger";
 import { DoneEvent, StreamHandlers, TokenEvent, ToolCallEvent } from "./types";
+
+function reportSseError(message: string, error: unknown): void {
+  logger.error(message, error);
+}
 
 function parseJsonSafely<T>(rawValue: string): T | null {
   try {
     return JSON.parse(rawValue) as T;
   } catch (error) {
-    console.error("Failed to parse SSE JSON:", error);
+    reportSseError("Failed to parse SSE JSON:", error);
     return null;
   }
 }
@@ -45,7 +50,7 @@ function dispatchEvent(
       handlers.onDone({ finish_reason: "error", error: "Malformed done event.", run_id: undefined });
     }
   } catch (error) {
-    console.error("Error dispatching SSE event:", error);
+    reportSseError("Error dispatching SSE event:", error);
   }
 }
 
@@ -106,7 +111,7 @@ export async function consumeSseStream(
 
     dispatchEvent(eventName, dataLines, handlers);
   } catch (error) {
-    console.error("SSE stream error:", error);
+    reportSseError("SSE stream error:", error);
     handlers.onDone({
       finish_reason: "error",
       error: "Stream connection failed.",

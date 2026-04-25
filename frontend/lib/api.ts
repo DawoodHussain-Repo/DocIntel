@@ -1,7 +1,9 @@
 import { BACKEND_URL } from "./config";
 import { consumeSseStream } from "./sse";
 import {
+  DocumentAnalysisData,
   ErrorResponse,
+  RewriteClauseData,
   StreamHandlers,
   SuccessResponse,
   UploadContractData,
@@ -20,13 +22,21 @@ function getErrorMessage(payload: unknown): string {
   return "Request failed.";
 }
 
-export async function uploadContract(file: File): Promise<UploadContractData> {
+interface RequestOptions {
+  signal?: AbortSignal;
+}
+
+export async function uploadContract(
+  file: File,
+  options: RequestOptions = {},
+): Promise<UploadContractData> {
   const requestData = new FormData();
   requestData.append("file", file);
 
   const response = await fetch(`${BACKEND_URL}/api/upload_contract`, {
     method: "POST",
     body: requestData,
+    signal: options.signal,
   });
 
   const payload = (await response.json()) as
@@ -43,17 +53,33 @@ export async function uploadContract(file: File): Promise<UploadContractData> {
 export async function streamChat(
   query: string,
   threadId: string,
+  file: string | null,
   handlers: StreamHandlers,
+  options: RequestOptions = {},
 ): Promise<void> {
+  const fileParam = file ? `&file=${encodeURIComponent(file)}` : "";
   const streamUrl = `${BACKEND_URL}/api/chat/stream?query=${encodeURIComponent(
     query,
-  )}&thread_id=${encodeURIComponent(threadId)}`;
+  )}&thread_id=${encodeURIComponent(threadId)}${fileParam}`;
 
-  const response = await fetch(streamUrl, {
-    headers: {
-      Accept: "text/event-stream",
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(streamUrl, {
+      headers: {
+        Accept: "text/event-stream",
+      },
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return;
+    }
+    handlers.onDone({
+      finish_reason: "error",
+      error: "Failed to start chat stream.",
+    });
+    return;
+  }
 
   if (!response.ok) {
     let errorMessage = "Failed to start chat stream.";
@@ -68,4 +94,53 @@ export async function streamChat(
   }
 
   await consumeSseStream(response, handlers);
+}
+
+export async function analyzeDocument(
+  file: string,
+  options: RequestOptions = {},
+): Promise<DocumentAnalysisData> {
+  const response = await fetch(`${BACKEND_URL}/api/analyze_document`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file }),
+    signal: options.signal,
+  });
+
+  const payload = (await response.json()) as
+    | SuccessResponse<DocumentAnalysisData>
+    | ErrorResponse;
+
+  if (!response.ok || payload.status !== "success") {
+    throw new Error(getErrorMessage(payload));
+  }
+
+  return payload.data;
+}
+
+export async function rewriteClause(params: {
+  file: string;
+  clause_text: string;
+  goal?: string | null;
+}, options: RequestOptions = {}): Promise<RewriteClauseData> {
+  const response = await fetch(`${BACKEND_URL}/api/rewrite_clause`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(params),
+    signal: options.signal,
+  });
+
+  const payload = (await response.json()) as
+    | SuccessResponse<RewriteClauseData>
+    | ErrorResponse;
+
+  if (!response.ok || payload.status !== "success") {
+    throw new Error(getErrorMessage(payload));
+  }
+
+  return payload.data;
 }
