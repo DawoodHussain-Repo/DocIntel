@@ -255,9 +255,23 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
     4. If still no text, raise error
     """
     import structlog
+    import os
     logger = structlog.get_logger("docintel.ingestion")
     
+    # Set Tesseract path for Windows if not already in PATH
+    if os.name == 'nt' and not os.environ.get('TESSERACT_PATH'):
+        tesseract_paths = [
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ]
+        for tess_path in tesseract_paths:
+            if os.path.exists(tess_path):
+                os.environ['TESSERACT_PATH'] = tess_path
+                logger.info("tesseract_path_set", path=tess_path)
+                break
+    
     valid_elements = []
+    last_error = None
     
     # Strategy 1: Try fast extraction first (no OCR, fastest)
     try:
@@ -277,11 +291,14 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
         
         if valid_elements:
             logger.info("pdf_parsing_success", strategy="fast", element_count=len(valid_elements))
+        else:
+            logger.info("pdf_fast_extraction_empty", filename=filename, note="No text found, trying hi_res")
             
     except Exception as error:
-        logger.warning("pdf_fast_strategy_failed", filename=filename, error=str(error))
+        last_error = error
+        logger.warning("pdf_fast_strategy_failed", filename=filename, error=str(error)[:200])
     
-    # Strategy 2: If fast failed, try hi_res without OCR (better extraction, no OCR)
+    # Strategy 2: If fast failed or returned no text, try hi_res without OCR
     if not valid_elements:
         try:
             logger.info("pdf_parsing_attempt", strategy="hi_res_no_ocr", filename=filename)
@@ -299,13 +316,16 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
             
             if valid_elements:
                 logger.info("pdf_parsing_success", strategy="hi_res_no_ocr", element_count=len(valid_elements))
+            else:
+                logger.info("pdf_hi_res_no_ocr_empty", filename=filename, note="No text found, trying OCR")
                 
         except Exception as error:
-            logger.warning("pdf_hi_res_no_ocr_failed", filename=filename, error=str(error))
+            last_error = error
+            logger.warning("pdf_hi_res_no_ocr_failed", filename=filename, error=str(error)[:200])
     
     # Strategy 3: If still no text, try hi_res with OCR (requires Tesseract)
     if not valid_elements:
-        logger.warning("pdf_no_text_extracted", filename=filename, note="Attempting OCR")
+        logger.info("pdf_attempting_ocr", filename=filename, note="Trying OCR as last resort")
         
         try:
             logger.info("pdf_parsing_attempt", strategy="hi_res_with_ocr", filename=filename)
@@ -334,33 +354,39 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
         except AppError:
             raise
         except Exception as ocr_error:
-            # OCR failed, check if it's because Tesseract is missing
+            last_error = ocr_error
             error_msg = str(ocr_error).lower()
-            if "tesseract" in error_msg:
-                logger.error("pdf_ocr_failed_no_tesseract", filename=filename)
+            
+            # Check for specific error types
+            if "tesseract" in error_msg or "tesseract is not installed" in error_msg:
+                logger.error("pdf_ocr_failed_no_tesseract", filename=filename, error=str(ocr_error)[:200])
                 raise AppError(
                     message=(
                         "The uploaded PDF could not be processed with standard text extraction methods. "
-                        "It may be a scanned document requiring OCR, but Tesseract is not installed. "
-                        "Please install Tesseract for OCR support or try a different PDF."
+                        "It may be a scanned document requiring OCR, but Tesseract is not installed or not in PATH. "
+                        "Please install Tesseract and ensure it's accessible from the command line."
                     ),
                     code="OCR_NOT_AVAILABLE",
                     status_code=422,
+                    details={"error": str(ocr_error)[:500]},
                 ) from ocr_error
             else:
-                logger.exception("pdf_ocr_failed", filename=filename, error=str(ocr_error))
+                logger.exception("pdf_ocr_failed_unknown", filename=filename, error=str(ocr_error)[:200])
                 raise AppError(
-                    message=f"Failed to extract text from PDF after trying multiple strategies: {ocr_error}",
+                    message=f"Failed to extract text from PDF after trying all strategies. Error: {str(ocr_error)[:200]}",
                     code="PDF_PARSE_FAILED",
                     status_code=500,
+                    details={"last_error": str(last_error)[:500] if last_error else None},
                 ) from ocr_error
     
     # Final validation
     if not valid_elements:
+        logger.error("pdf_all_strategies_failed", filename=filename, last_error=str(last_error)[:200] if last_error else None)
         raise AppError(
-            message="The uploaded PDF does not contain extractable text.",
+            message=f"The uploaded PDF does not contain extractable text. All extraction strategies failed. Last error: {str(last_error)[:200] if last_error else 'Unknown'}",
             code="EMPTY_DOCUMENT",
             status_code=422,
+            details={"last_error": str(last_error)[:500] if last_error else None},
         )
 
     has_headings = any(
