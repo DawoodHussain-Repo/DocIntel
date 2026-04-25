@@ -258,17 +258,21 @@ def process_pdf(file_path: str, filename: str, chroma_client: Any) -> Dict[str, 
     import os
     logger = structlog.get_logger("docintel.ingestion")
     
-    # Set Tesseract path for Windows if not already in PATH
-    if os.name == 'nt' and not os.environ.get('TESSERACT_PATH'):
-        tesseract_paths = [
-            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-        ]
-        for tess_path in tesseract_paths:
-            if os.path.exists(tess_path):
-                os.environ['TESSERACT_PATH'] = tess_path
-                logger.info("tesseract_path_set", path=tess_path)
-                break
+    # Set Tesseract path for Windows - add to PATH so subprocess can find it
+    if os.name == 'nt':
+        tesseract_dir = r"C:\Program Files\Tesseract-OCR"
+        if os.path.exists(tesseract_dir):
+            # Add to PATH if not already there
+            current_path = os.environ.get('PATH', '')
+            if tesseract_dir not in current_path:
+                os.environ['PATH'] = f"{tesseract_dir};{current_path}"
+                logger.info("tesseract_added_to_path", path=tesseract_dir)
+            
+            # Also set TESSERACT_PATH for unstructured
+            tesseract_exe = os.path.join(tesseract_dir, "tesseract.exe")
+            if os.path.exists(tesseract_exe):
+                os.environ['TESSERACT_PATH'] = tesseract_exe
+                logger.info("tesseract_path_set", path=tesseract_exe)
     
     valid_elements = []
     last_error = None

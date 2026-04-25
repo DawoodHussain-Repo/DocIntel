@@ -9,6 +9,20 @@ def test_pdf(pdf_path):
     print(f"\nTesting PDF: {pdf_path}")
     print("="*60)
     
+    # Set Tesseract path for Windows
+    if os.name == 'nt':
+        tesseract_dir = r"C:\Program Files\Tesseract-OCR"
+        if os.path.exists(tesseract_dir):
+            current_path = os.environ.get('PATH', '')
+            if tesseract_dir not in current_path:
+                os.environ['PATH'] = f"{tesseract_dir};{current_path}"
+                print(f"✅ Added Tesseract to PATH: {tesseract_dir}")
+            
+            tesseract_exe = os.path.join(tesseract_dir, "tesseract.exe")
+            if os.path.exists(tesseract_exe):
+                os.environ['TESSERACT_PATH'] = tesseract_exe
+                print(f"✅ Set TESSERACT_PATH: {tesseract_exe}")
+    
     # Test 1: Check file exists
     if not os.path.exists(pdf_path):
         print(f"❌ File not found: {pdf_path}")
