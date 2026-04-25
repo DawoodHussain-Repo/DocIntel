@@ -1,22 +1,16 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 import "./globals.css";
-
-const bodyFont = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-body",
-});
-
-const headingFont = Space_Grotesk({
-  subsets: ["latin"],
-  weight: ["500", "700"],
-  variable: "--font-heading",
-});
+import { Navbar } from "@/components/Navbar";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/dm-serif-display/400.css";
+import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/600.css";
 
 export const metadata: Metadata = {
-  title: "DocIntel Console",
-  description: "Enterprise-grade legal contract intelligence workspace.",
+  title: "DocIntel",
+  description: "AI-powered legal contract analysis: summarize, extract, and score risk.",
 };
 
 export default function RootLayout({
@@ -26,7 +20,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${bodyFont.variable} ${headingFont.variable}`}>
+      <body className="bg-ink text-text font-sans antialiased">
+        <Navbar />
         {children}
       </body>
     </html>
