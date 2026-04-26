@@ -16,7 +16,6 @@ First, let's verify the system works with a known-good PDF:
 # In the backend directory with venv activated
 cd backend
 .\venv\Scripts\Activate.ps1
-
 # Create a simple test PDF using Python
 python -c "
 from reportlab.lib.pagesizes import letter
