@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import "@fontsource/inter/400.css";
@@ -20,8 +21,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-ink text-text font-sans antialiased">
-        <Navbar />
+      <body className="min-h-screen bg-ink text-text font-sans antialiased">
+        <Suspense>
+          <Navbar />
+        </Suspense>
         {children}
       </body>
     </html>

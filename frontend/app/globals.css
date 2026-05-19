@@ -14,9 +14,6 @@
 
   body {
     @apply bg-ink text-text;
-    background-image:
-      radial-gradient(circle at top left, rgba(37, 99, 235, 0.06), transparent 24rem),
-      linear-gradient(180deg, #f8f8fa 0%, #f3f4f6 100%);
   }
 
   * {
@@ -24,28 +21,46 @@
   }
 
   ::selection {
-    background: rgba(37, 99, 235, 0.14);
+    background: rgba(79, 70, 229, 0.12);
+  }
+
+  /* Premium custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, 0.1);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(15, 23, 42, 0.18);
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-[24px] border border-border bg-surface shadow-card;
+    @apply rounded-3xl border border-border bg-surface shadow-card;
   }
 
   .card-hover {
-    @apply transition-all duration-200 hover:-translate-y-px hover:shadow-[0_0_0_1px_rgba(17,24,39,0.04),0_20px_44px_rgba(17,24,39,0.09)];
+    @apply transition-all duration-200 hover:-translate-y-px hover:shadow-card-hover;
   }
 
   .surface-muted {
-    @apply rounded-[20px] border border-border bg-black/[0.02];
+    @apply rounded-2xl border border-border/60 bg-slate-50;
   }
 
   .label {
-    @apply font-mono text-[11px] uppercase tracking-[0.2em] text-text-sub;
+    @apply font-mono text-[11px] uppercase tracking-[0.18em] text-text-sub;
   }
 
   .hairline {
-    @apply border-b border-border;
+    @apply border-b border-border/60;
   }
 }

@@ -8,8 +8,18 @@ import structlog
 from core.config import config
 
 
+def _configure_standard_streams() -> None:
+    """Ensure stdout/stderr can safely render UTF-8 log output on Windows."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def setup_logging() -> None:
     """Configure structlog with JSON rendering for production observability."""
+    _configure_standard_streams()
+
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
@@ -42,6 +52,7 @@ def setup_logging() -> None:
 
 def get_logger(name: str = "docintel") -> Any:
     """Get a bound logger instance with the specified name."""
+    _configure_standard_streams()
     return structlog.get_logger(name)
 
 

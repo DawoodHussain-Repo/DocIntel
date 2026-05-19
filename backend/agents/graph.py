@@ -60,12 +60,15 @@ def build_graph(llm: ChatOpenAI, tools: list, chroma_client: Any = None) -> Any:
     
     # Create tool execution node
     tool_executor = ToolExecutionNode(tools)
+
+    async def llm_step(state: AgentState) -> dict[str, Any]:
+        return await llm_node(state, llm)
     
     # Create workflow
     workflow = StateGraph(AgentState)
     
     # Add nodes
-    workflow.add_node("llm", lambda state: llm_node(state, llm))
+    workflow.add_node("llm", llm_step)
     workflow.add_node("tools", tool_executor)
     
     # Set entry point

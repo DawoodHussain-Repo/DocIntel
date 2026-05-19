@@ -15,17 +15,16 @@ export function Navbar() {
   const file = searchParams.get("file");
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/80 bg-white/82 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-6">
+    <header className="sticky top-0 z-40 border-b border-border/60 bg-white/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-6 lg:px-10">
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-900 bg-slate-900 shadow-sm">
-              <ShieldCheck className="h-5 w-5 text-white" />
+            <div className="rounded-lg bg-slate-900 p-1.5 text-white shadow-sm">
+              <ShieldCheck size={20} strokeWidth={2.5} />
             </div>
-            <div className="leading-tight">
-              <p className="font-serif text-lg">DocIntel</p>
-              <p className="text-xs text-text-sub">Contract Intelligence</p>
-            </div>
+            <span className="text-lg font-semibold tracking-tight text-slate-900">
+              DocIntel
+            </span>
           </Link>
 
           <Badge className="hidden sm:inline-flex" variant="neutral">
@@ -58,10 +57,10 @@ export function Navbar() {
 
           <button
             type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-white text-text-sub transition-colors hover:text-text"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-900"
             aria-label="User account"
           >
-            <CircleUserRound className="h-5 w-5" />
+            <CircleUserRound className="h-4 w-4" />
           </button>
         </div>
       </div>

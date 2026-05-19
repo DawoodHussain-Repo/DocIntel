@@ -2,7 +2,7 @@
 import asyncio
 import json
 import uuid
-from typing import Any, AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, AsyncIterator, Dict
 
 import structlog
 from langchain_core.messages import HumanMessage
@@ -80,6 +80,27 @@ def _extract_text(chunk: Any) -> str:
     return ""
 
 
+async def _iterate_with_timeout(
+    iterator: AsyncIterator[str],
+    timeout_seconds: int,
+) -> AsyncGenerator[str, None]:
+    """Iterate an async stream with an overall timeout compatible with Python 3.10."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+
+    while True:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            raise asyncio.TimeoutError
+
+        try:
+            next_event = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+        except StopAsyncIteration:
+            return
+
+        yield next_event
+
+
 async def stream_chat_events(
     agent_service: AgentService,
     query: str,
@@ -103,6 +124,8 @@ async def stream_chat_events(
     
     token_count = 0
     tool_call_count = 0
+    emitted_message_ids: set[str] = set()
+    emitted_tool_call_ids: set[str] = set()
 
     async def _stream_agent_events() -> AsyncGenerator[str, None]:
         nonlocal token_count, tool_call_count
@@ -113,13 +136,54 @@ async def stream_chat_events(
             run_id,
             active_document=active_document,
         ):
-            if event.get("event") != "on_chat_model_stream":
+            event_name = event.get("event")
+            chunk = event.get("data", {}).get("chunk")
+            output = event.get("data", {}).get("output")
+
+            if event_name == "on_chat_model_stream":
+                if chunk and hasattr(chunk, "tool_calls") and chunk.tool_calls:
+                    for tool_call in chunk.tool_calls:
+                        tool_call_id = str(tool_call.get("id", f"tool-call-{tool_call_count + 1}"))
+                        if tool_call_id in emitted_tool_call_ids:
+                            continue
+                        emitted_tool_call_ids.add(tool_call_id)
+                        tool_call_count += 1
+                        tool_name = tool_call.get("name", "unknown_tool")
+
+                        logger.info(
+                            "tool_call_invoked",
+                            tool_name=tool_name,
+                            tool_call_index=tool_call_count,
+                        )
+
+                        yield _format_sse_event(
+                            "tool_call",
+                            {
+                                "tool": tool_name,
+                                "query": str(tool_call.get("args", {})),
+                            },
+                        )
+
+                token_text = _extract_text(chunk)
+                if token_text:
+                    token_count += 1
+                    yield _format_sse_event("token", {"text": token_text})
                 continue
 
-            chunk = event.get("data", {}).get("chunk")
+            if event_name == "on_chain_end" and event.get("name") == "llm":
+                messages = output.get("messages") if isinstance(output, dict) else None
+                if not isinstance(messages, list) or not messages:
+                    continue
 
-            if chunk and hasattr(chunk, "tool_calls") and chunk.tool_calls:
-                for tool_call in chunk.tool_calls:
+                message = messages[-1]
+                message_id = str(getattr(message, "id", ""))
+
+                tool_calls = getattr(message, "tool_calls", None) or []
+                for tool_call in tool_calls:
+                    tool_call_id = str(tool_call.get("id", f"tool-call-{tool_call_count + 1}"))
+                    if tool_call_id in emitted_tool_call_ids:
+                        continue
+                    emitted_tool_call_ids.add(tool_call_id)
                     tool_call_count += 1
                     tool_name = tool_call.get("name", "unknown_tool")
 
@@ -137,15 +201,18 @@ async def stream_chat_events(
                         },
                     )
 
-            token_text = _extract_text(chunk)
-            if token_text:
-                token_count += 1
-                yield _format_sse_event("token", {"text": token_text})
+                token_text = _extract_text(message)
+                if token_text and message_id not in emitted_message_ids:
+                    emitted_message_ids.add(message_id)
+                    token_count += 1
+                    yield _format_sse_event("token", {"text": token_text})
 
     try:
-        async with asyncio.timeout(config.AGENT_TIMEOUT_SECONDS):
-            async for event in _stream_agent_events():
-                yield event
+        async for event in _iterate_with_timeout(
+            _stream_agent_events(),
+            config.AGENT_TIMEOUT_SECONDS,
+        ):
+            yield event
 
         logger.info(
             "agent_stream_completed",
@@ -182,7 +249,7 @@ async def stream_chat_events(
         logger.exception(
             "agent_stream_failed",
             error_type=type(error).__name__,
-            error_message=str(error),
+            error_message=sanitize_for_logging(str(error), max_length=400),
         )
         
         done_payload = StreamDoneData(

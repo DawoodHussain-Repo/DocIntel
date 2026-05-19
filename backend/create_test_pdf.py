@@ -7,7 +7,7 @@ def create_test_pdf():
         from reportlab.pdfgen import canvas
         from reportlab.lib.units import inch
     except ImportError:
-        print("❌ reportlab not installed. Install with: pip install reportlab")
+        print("reportlab not installed. Install with: pip install reportlab")
         return False
     
     filename = "test_contract.pdf"
@@ -62,7 +62,7 @@ def create_test_pdf():
     
     c.save()
     
-    print(f"✅ Created {filename}")
+    print(f"Created {filename}")
     print(f"   This is a text-based PDF that should work with fast/hi-res extraction")
     print(f"\nTest it with:")
     print(f"   python quick_test.py {filename}")
