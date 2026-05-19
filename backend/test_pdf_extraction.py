@@ -78,11 +78,13 @@ def test_pdf_extraction(pdf_path: str):
     # Strategy 2: Hi-res without OCR
     print("\n4. Testing Strategy 2: Hi-Res (no OCR)...")
     try:
+        from core.nltk_resources import ensure_nltk_resources
+        ensure_nltk_resources()
         elements = partition_pdf(
             pdf_path,
             strategy="hi_res",
             extract_images_in_pdf=False,
-            infer_table_structure=True,
+            infer_table_structure=False,
         )
         valid_elements = [e for e in elements if getattr(e, "text", "").strip()]
         print(f"   ✅ Hi-res (no OCR) strategy succeeded")
@@ -104,11 +106,12 @@ def test_pdf_extraction(pdf_path: str):
     # Strategy 3: Hi-res with OCR
     print("\n5. Testing Strategy 3: Hi-Res with OCR...")
     try:
+        ensure_nltk_resources()
         elements = partition_pdf(
             pdf_path,
             strategy="hi_res",
             extract_images_in_pdf=True,
-            infer_table_structure=True,
+            infer_table_structure=False,
         )
         valid_elements = [e for e in elements if getattr(e, "text", "").strip()]
         print(f"   ✅ Hi-res with OCR strategy succeeded")

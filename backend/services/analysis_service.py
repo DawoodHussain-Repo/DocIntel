@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, List
 
 import structlog
 from langchain_openai import ChatOpenAI
 
-from core.analysis_catalog import FIELD_SPECS, PLAYBOOK
+from core.analysis_catalog import FIELD_SPECS
 from core.clause_parser import build_clause_ast
 from core.llm_utils import invoke_structured_model
 from core.prompts import (
@@ -24,7 +25,6 @@ from core.models import (
     ContractClassification,
     DocumentAnalysisData,
     ExtractedFieldValue,
-    MissingClause,
     RiskReport,
     UnifiedDocumentAnalysis,
 )
@@ -58,7 +58,72 @@ def _evidence_payload(excerpts: List[dict[str, Any]]) -> List[dict[str, Any]]:
     ]
 
 
-def _convert_unified_to_legacy_format(
+async def _build_extracted_fields(
+    unified: UnifiedDocumentAnalysis,
+    source_file: str,
+    chroma_client: Any,
+) -> List[ExtractedFieldValue]:
+    """Retrieve supporting evidence concurrently for extracted fields."""
+    from core.models import EvidenceSnippet
+    from core.retrieval import retrieve_chunks
+
+    field_mapping = {spec[0]: (spec[1], spec[2]) for spec in FIELD_SPECS}
+    active_fields = [
+        (
+            field_key,
+            field_label,
+            field_query,
+            value,
+            getattr(unified, f"{field_key}_confidence", 0.0),
+        )
+        for field_key, (field_label, field_query) in field_mapping.items()
+        if (value := getattr(unified, field_key, None)) is not None
+    ]
+
+    if not active_fields:
+        return []
+
+    evidence_results = await asyncio.gather(
+        *[
+            asyncio.to_thread(
+                retrieve_chunks,
+                chroma_client,
+                field_query,
+                source_file,
+                2,
+            )
+            for _, _, field_query, _, _ in active_fields
+        ]
+    )
+
+    extracted_fields: List[ExtractedFieldValue] = []
+    for (field_key, field_label, _field_query, value, confidence), evidence_chunks in zip(
+        active_fields,
+        evidence_results,
+    ):
+        evidence_snippets = [
+            EvidenceSnippet(
+                page_number=chunk.get("page_number", 1),
+                heading=chunk.get("heading", "Document Section"),
+                snippet=_truncate(chunk.get("text", ""), max_chars=400),
+            )
+            for chunk in evidence_chunks
+        ]
+        extracted_fields.append(
+            ExtractedFieldValue(
+                key=field_key,
+                label=field_label,
+                value=value,
+                confidence=confidence,
+                evidence=evidence_snippets,
+                notes=None,
+            )
+        )
+
+    return extracted_fields
+
+
+async def _convert_unified_to_legacy_format(
     unified: UnifiedDocumentAnalysis,
     source_file: str,
     chroma_client: Any,
@@ -68,10 +133,6 @@ def _convert_unified_to_legacy_format(
     Retrieves evidence snippets for each extracted field to maintain quality.
     This maintains backward compatibility with existing API contracts.
     """
-    from core.analysis_catalog import FIELD_SPECS
-    from core.retrieval import retrieve_chunks
-    from core.models import EvidenceSnippet
-    
     # Build classification
     classification = ContractClassification(
         contract_type=unified.contract_type,
@@ -79,43 +140,11 @@ def _convert_unified_to_legacy_format(
         rationale=unified.classification_rationale,
         evidence=[],
     )
-    
-    # Build extracted fields with evidence retrieval
-    field_mapping = {spec[0]: (spec[1], spec[2]) for spec in FIELD_SPECS}  # key -> (label, query)
-    extracted_fields = []
-    
-    for field_key, (field_label, field_query) in field_mapping.items():
-        value = getattr(unified, field_key, None)
-        confidence = getattr(unified, f"{field_key}_confidence", 0.0)
-        
-        if value is not None:
-            # Retrieve evidence for this field
-            evidence_chunks = retrieve_chunks(
-                chroma_client,
-                field_query,
-                source_file,
-                n_results=2,  # Get top 2 evidence snippets
-            )
-            
-            evidence_snippets = [
-                EvidenceSnippet(
-                    page_number=chunk.get("page_number", 1),
-                    heading=chunk.get("heading", "Document Section"),
-                    snippet=_truncate(chunk.get("text", ""), max_chars=400),
-                )
-                for chunk in evidence_chunks
-            ]
-            
-            extracted_fields.append(
-                ExtractedFieldValue(
-                    key=field_key,
-                    label=field_label,
-                    value=value,
-                    confidence=confidence,
-                    evidence=evidence_snippets,
-                    notes=None,
-                )
-            )
+    extracted_fields = await _build_extracted_fields(
+        unified,
+        source_file,
+        chroma_client,
+    )
     
     # Build risk report
     risk = RiskReport(
@@ -156,12 +185,13 @@ async def analyze_document(
     Returns:
         Complete document analysis
     """
-    ensure_document_exists(chroma_client, source_file)
+    await asyncio.to_thread(ensure_document_exists, chroma_client, source_file)
     
     logger.info("unified_analysis_started", file=source_file)
     
     # Step 1: Retrieve comprehensive evidence (20 diverse chunks)
-    evidence_chunks = retrieve_comprehensive_evidence(
+    evidence_chunks = await asyncio.to_thread(
+        retrieve_comprehensive_evidence,
         chroma_client,
         source_file,
         max_chunks=20,
@@ -197,12 +227,28 @@ async def analyze_document(
         fields_extracted=sum(1 for field in FIELD_SPECS if getattr(unified_result, field[0], None)),
     )
     
-    # Step 3: Convert to legacy format with evidence retrieval
-    analysis = _convert_unified_to_legacy_format(unified_result, source_file, chroma_client)
-    
+    # Step 3: Convert analysis payload and fetch document chunks in parallel
+    analysis_task = _convert_unified_to_legacy_format(
+        unified_result,
+        source_file,
+        chroma_client,
+    )
+    document_chunks_task = asyncio.to_thread(
+        retrieve_document_chunks,
+        chroma_client,
+        source_file,
+    )
+    analysis, document_chunks = await asyncio.gather(
+        analysis_task,
+        document_chunks_task,
+    )
+
     # Step 4: Build clause AST (separate step, not LLM-based)
-    document_chunks = retrieve_document_chunks(chroma_client, source_file)
-    analysis.clauses = build_clause_ast(document_chunks, analysis.risk)
+    analysis.clauses = await asyncio.to_thread(
+        build_clause_ast,
+        document_chunks,
+        analysis.risk,
+    )
     
     logger.info(
         "analysis_completed",

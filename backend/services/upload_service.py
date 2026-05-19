@@ -2,6 +2,7 @@
 import re
 import zipfile
 from io import BytesIO
+from time import perf_counter
 from typing import Any, Optional
 
 import structlog
@@ -133,6 +134,7 @@ def process_contract_upload(
 ) -> UploadContractData:
     """Validate an upload and index the document into the legal document collection."""
     safe_file_name = _sanitize_filename(file_name)
+    start_time = perf_counter()
     
     logger.info(
         "upload_received",
@@ -166,6 +168,7 @@ def process_contract_upload(
             filename=safe_file_name,
             chunks_indexed=ingestion_result.get("chunks_indexed", 0),
             collection=ingestion_result.get("collection", "unknown"),
+            duration_ms=round((perf_counter() - start_time) * 1000, 2),
         )
         
     except AppError:

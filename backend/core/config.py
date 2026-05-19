@@ -43,6 +43,13 @@ class Config:
 
         self.CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
         self.CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
+        self.PDF_TEXT_MIN_CHARS = int(os.getenv("PDF_TEXT_MIN_CHARS", "120"))
+        self.ENABLE_OCR_FALLBACK = self._parse_bool_env(
+            os.getenv("ENABLE_OCR_FALLBACK", "true")
+        )
+        self.AUTO_DOWNLOAD_NLTK = self._parse_bool_env(
+            os.getenv("AUTO_DOWNLOAD_NLTK", "true")
+        )
 
         self.CHROMA_PERSIST_DIR = self._resolve_path(
             os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
@@ -52,6 +59,9 @@ class Config:
         )
         self.WORKSPACE_DIR = self._resolve_path(
             os.getenv("WORKSPACE_DIR", "./workspace")
+        )
+        self.NLTK_DATA_DIR = self._resolve_path(
+            os.getenv("NLTK_DATA_DIR", "./nltk_data")
         )
 
         self.BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
@@ -75,11 +85,19 @@ class Config:
         self.LOG_FORMAT = os.getenv("LOG_FORMAT", "json").lower()
 
         self.AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "120"))
+        self.PRELOAD_MODELS = self._parse_bool_env(
+            os.getenv("PRELOAD_MODELS", "true")
+        )
 
     @staticmethod
     def _split_csv_env(raw_value: str) -> List[str]:
         """Parse comma-separated env values into a normalized string list."""
         return [value.strip() for value in raw_value.split(",") if value.strip()]
+
+    @staticmethod
+    def _parse_bool_env(raw_value: str) -> bool:
+        """Parse common truthy string values from environment variables."""
+        return raw_value.lower() in ("1", "true", "yes", "on")
 
     @staticmethod
     def _resolve_path(raw_path: str) -> Path:
@@ -112,6 +130,9 @@ class Config:
 
         if not (0 <= self.LLM_TEMPERATURE <= 1):
             raise ValueError("LLM_TEMPERATURE must be between 0 and 1")
+
+        if self.PDF_TEXT_MIN_CHARS <= 0:
+            raise ValueError("PDF_TEXT_MIN_CHARS must be greater than 0")
 
         if self.LOG_LEVEL not in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
             raise ValueError(

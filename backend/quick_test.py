@@ -65,11 +65,13 @@ def test_pdf(pdf_path):
     # Test 4: Try hi-res without OCR
     print("\nTrying hi-res (no OCR)...")
     try:
+        from core.nltk_resources import ensure_nltk_resources
+        ensure_nltk_resources()
         elements = partition_pdf(
             pdf_path,
             strategy="hi_res",
             extract_images_in_pdf=False,
-            infer_table_structure=True,
+            infer_table_structure=False,
         )
         print(f"✅ Hi-res strategy returned {len(elements)} elements")
         
@@ -106,14 +108,15 @@ def test_pdf(pdf_path):
     # Test 6: Try hi-res with OCR
     print("\nTrying hi-res with OCR...")
     try:
+        ensure_nltk_resources()
         # Set Tesseract path
         os.environ['TESSERACT_PATH'] = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-        
+
         elements = partition_pdf(
             pdf_path,
             strategy="hi_res",
             extract_images_in_pdf=True,
-            infer_table_structure=True,
+            infer_table_structure=False,
         )
         print(f"✅ Hi-res with OCR returned {len(elements)} elements")
         

@@ -1,4 +1,5 @@
 """FastAPI application with secure upload and streaming chat endpoints."""
+import asyncio
 from contextlib import asynccontextmanager
 
 import chromadb
@@ -16,6 +17,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from core.checkpointer import set_checkpointer
 from core.config import config
 from core.errors import AppError
+from core.nltk_resources import ensure_nltk_resources
 from core.models import (
     AnalyzeDocumentRequest,
     DocumentAnalysisData,
@@ -69,7 +71,11 @@ async def lifespan(app: FastAPI):
         from chromadb.config import Settings
         app.state.chroma_client = chromadb.PersistentClient(
             path=str(config.CHROMA_PERSIST_DIR),
-            settings=Settings(anonymized_telemetry=False),
+            settings=Settings(
+                anonymized_telemetry=False,
+                chroma_product_telemetry_impl="core.chroma_telemetry.NoOpProductTelemetryClient",
+                chroma_telemetry_impl="core.chroma_telemetry.NoOpProductTelemetryClient",
+            ),
         )
         logger.info("chromadb_initialized", persist_dir=str(config.CHROMA_PERSIST_DIR))
         
@@ -81,18 +87,27 @@ async def lifespan(app: FastAPI):
             set_checkpointer(checkpointer)
             logger.info("checkpointer_initialized", db_path=str(config.SQLITE_DB_PATH))
             
-            # Step 4: Pre-warm embedding model (this can take 10-30s on first run)
-            logger.info("embedding_model_preload_started", 
-                       model=config.EMBEDDING_MODEL_NAME,
-                       note="First run may download ~80MB model from HuggingFace")
-            from core.embeddings import get_embedding_model
-            _ = get_embedding_model()
-            logger.info("embedding_model_preload_completed")
-            
-            # Step 5: Pre-warm LLM connection
-            logger.info("llm_preload_started", provider=config.LLM_PROVIDER)
-            _ = get_llm()
-            logger.info("llm_preload_completed")
+            # Step 4: Pre-warm models (parallelized to reduce startup latency)
+            if config.PRELOAD_MODELS:
+                logger.info(
+                    "model_preload_started",
+                    embedding_model=config.EMBEDDING_MODEL_NAME,
+                    provider=config.LLM_PROVIDER,
+                )
+                from core.embeddings import get_embedding_model
+                await asyncio.gather(
+                    asyncio.to_thread(get_embedding_model),
+                    asyncio.to_thread(get_llm),
+                )
+                try:
+                    await asyncio.to_thread(ensure_nltk_resources)
+                except AppError as error:
+                    logger.warning(
+                        "nltk_preload_skipped",
+                        error_code=error.code,
+                        error_message=error.message,
+                    )
+                logger.info("model_preload_completed")
             
             elapsed = time.time() - start_time
             logger.info("application_startup_completed", 
@@ -233,19 +248,24 @@ async def upload_contract(request: Request, file: UploadFile = File(...)) -> Suc
         filename=file.filename,
         content_type=file.content_type,
     )
-    
-    content = await file.read()
-    result = process_contract_upload(
-        file.filename, file.content_type, content, app.state.chroma_client
-    )
-    
-    logger.info(
-        "upload_completed",
-        filename=file.filename,
-        chunks_indexed=result.chunks_indexed,
-    )
-    
-    return SuccessResponse(data=result.model_dump())
+
+    try:
+        content = await file.read()
+        result = await asyncio.to_thread(
+            process_contract_upload,
+            file.filename,
+            file.content_type,
+            content,
+            app.state.chroma_client,
+        )
+        logger.info(
+            "upload_completed",
+            filename=file.filename,
+            chunks_indexed=result.chunks_indexed,
+        )
+        return SuccessResponse(data=result.model_dump())
+    finally:
+        await file.close()
 
 
 @app.post("/api/analyze_document", response_model=SuccessResponse)
@@ -286,7 +306,7 @@ async def download_report_pdf(request: Request, file: str = Query(..., min_lengt
         chroma_client=request.app.state.chroma_client,
         source_file=file,
     )
-    pdf_bytes = render_analysis_report_pdf(analysis)
+    pdf_bytes = await asyncio.to_thread(render_analysis_report_pdf, analysis)
     safe_name = file.replace("\\", "_").replace("/", "_")
     if not safe_name.lower().endswith(".pdf"):
         safe_name = f"{safe_name}.pdf"

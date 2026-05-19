@@ -36,6 +36,7 @@ docintel_memory.db
 
 # ChromaDB
 chroma_db/
+backend/core/nltk_data/
 
 # Node
 node_modules/

@@ -6,13 +6,13 @@ Run this once after installation to avoid re-downloading models:
 
 This will download:
 1. Sentence transformer embedding model (~80MB)
-2. Unstructured layout detection models (~160MB)
-3. Table transformer model (~46MB)
+2. Unstructured layout detection models used for PDF OCR fallback
+3. NLTK sentence tokenization resources
 
-Total: ~300MB
+Total: ~250MB (varies by cache state)
 
 Models are cached in:
-- Windows: C:\Users\<username>\.cache\huggingface\
+- Windows: C:\\Users\\<username>\\.cache\\huggingface\\
 - Linux/Mac: ~/.cache/huggingface/
 """
 
@@ -77,14 +77,14 @@ def preload_unstructured_models():
             tmp_path,
             strategy="hi_res",
             extract_images_in_pdf=False,
-            infer_table_structure=True,
+            infer_table_structure=False,
         )
         
         # Cleanup
         os.unlink(tmp_path)
         
         print(f"✅ Layout detection models cached successfully")
-        print(f"   Models: yolo_x_layout, resnet18, table-transformer")
+        print(f"   Models: yolo_x_layout, resnet18")
         print(f"   Size: ~160MB")
         
         return True
@@ -95,6 +95,24 @@ def preload_unstructured_models():
         return False
     except Exception as e:
         print(f"❌ Failed to download layout models: {e}")
+        return False
+
+
+def preload_nltk_resources():
+    """Pre-download NLTK tokenizers required by unstructured PDF parsing."""
+    print("\n" + "=" * 60)
+    print("3. Downloading NLTK Resources")
+    print("=" * 60)
+
+    try:
+        from core.nltk_resources import ensure_nltk_resources
+
+        ensure_nltk_resources()
+        print("✅ NLTK resources cached successfully")
+        print("   Resources: punkt, punkt_tab")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to download NLTK resources: {e}")
         return False
 
 
@@ -159,7 +177,11 @@ def main():
     if preload_unstructured_models():
         success_count += 1
     
-    # 3. Show cache info
+    # 3. NLTK resources
+    if preload_nltk_resources():
+        success_count += 1
+
+    # 4. Show cache info
     check_cache_location()
     
     # Summary
@@ -167,14 +189,14 @@ def main():
     print("Summary")
     print("="*60)
     
-    if success_count == 2:
-        print("✅ All models downloaded and cached successfully!")
+    if success_count == 3:
+        print("✅ All runtime assets downloaded and cached successfully!")
         print("\nNext steps:")
         print("1. Start the backend: python main.py")
         print("2. Models will load instantly from cache")
         print("3. No more downloads during PDF processing")
     else:
-        print(f"⚠️  {success_count}/2 model groups downloaded")
+        print(f"⚠️  {success_count}/3 runtime asset groups downloaded")
         print("\nSome models failed to download.")
         print("The system will try to download them when needed.")
     
